@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yamaha Playcards</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1c22; --muted: #5a5f6e;
+    --accent: #1f5fbf; --rule: #e2e5ec; --panel: #f6f7fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c; --fg: #e6e8ee; --muted: #a2a8b8;
+      --accent: #7ea9f0; --rule: #2a2e39; --panel: #1a1d25;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 6vh 5vw; background: var(--bg); color: var(--fg);
+    font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .4em; }
+  p.lede { color: var(--muted); margin-top: 0; }
+  ul { list-style: none; padding: 0; margin: 2rem 0 0; }
+  li { border-top: 1px solid var(--rule); }
+  li:last-child { border-bottom: 1px solid var(--rule); }
+  a.card {
+    display: block; padding: 1rem .25rem; color: inherit; text-decoration: none;
+  }
+  a.card:hover, a.card:focus-visible { background: var(--panel); }
+  a.card strong { color: var(--accent); text-decoration: underline; }
+  a.card span { display: block; color: var(--muted); font-size: .95rem; }
+  footer { margin-top: 2.5rem; color: var(--muted); font-size: .9rem; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>The Yamaha Playcard format</h1>
+  <p class="lede">
+    Songs on a strip of magnetic tape glued to the bottom of a sheet-music card,
+    read by Yamaha keyboards from 1982 to 1985. The format was undocumented.
+    This is the documentation.
+  </p>
+
+  <ul>
+    <li>
+      <a class="card" href="playcard-format.html">
+        <strong>Read the format specification</strong>
+        <span>The container, the header, the duration tracks, the pitch
+          streams, the chord chart, the repeat structure, and how each of it
+          was established.</span>
+      </a>
+    </li>
+    <li>
+      <a class="card" href="https://github.com/jaybird110127/playcards">
+        <strong>The repository</strong>
+        <span>The tools that read a card, write one, play it and take it
+          apart, and the rest of the documentation.</span>
+      </a>
+    </li>
+  </ul>
+
+  <footer>
+    <p>
+      Decoded from the cartridge ROM and the cards themselves, not from
+      Yamaha's patents. No Yamaha card images, ROM images or accompaniment
+      patterns are published here.
+    </p>
+  </footer>
+</main>
+</body>
+</html>

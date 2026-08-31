@@ -1,0 +1,1746 @@
+<meta charset="utf-8">
+<title>Yamaha Playcard Format — Decoded</title>
+<style>
+  /* Palette taken from the TMS9918 in the MSX itself - the colours this
+     cartridge could actually put on a screen. Neutrals carry a slight
+     blue-violet bias toward the accent so they read as chosen. */
+  :root {
+    --ink:        #14161f;
+    --ink-soft:   #4a4f63;
+    --ink-faint:  #767c92;
+    --ground:     #f4f4f7;
+    --panel:      #ffffff;
+    --panel-2:    #fbfbfd;
+    --rule:       #d9dae4;
+    --rule-soft:  #e8e9f0;
+    --accent:     #4b46cf;
+    --accent-ink: #ffffff;
+    --cyan:       #1d8ea6;
+    --green:      #2f8c39;
+    --red:        #c05248;
+    --amber:      #8a7420;
+    --chip:       #ececf5;
+    --band:       #dcdcf0;
+
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink:        #e6e7ef;
+      --ink-soft:   #a8adc4;
+      --ink-faint:  #7b8098;
+      --ground:     #101119;
+      --panel:      #191b25;
+      --panel-2:    #15171f;
+      --rule:       #2f3244;
+      --rule-soft:  #232633;
+      --accent:     #9b93ff;
+      --accent-ink: #12121c;
+      --cyan:       #65dbef;
+      --green:      #5cc266;
+      --red:        #ff897d;
+      --amber:      #ccc35e;
+      --chip:       #23263a;
+      --band:       #2c2f4d;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink:        #e6e7ef;
+    --ink-soft:   #a8adc4;
+    --ink-faint:  #7b8098;
+    --ground:     #101119;
+    --panel:      #191b25;
+    --panel-2:    #15171f;
+    --rule:       #2f3244;
+    --rule-soft:  #232633;
+    --accent:     #9b93ff;
+    --accent-ink: #12121c;
+    --cyan:       #65dbef;
+    --green:      #5cc266;
+    --red:        #ff897d;
+    --amber:      #ccc35e;
+    --chip:       #23263a;
+    --band:       #2c2f4d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 28px 96px; }
+  .col  { max-width: 68ch; }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- masthead ---- */
+  header.top {
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 40px;
+    padding: 56px 0 20px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(30px, 5.4vw, 47px);
+    line-height: 1.04;
+    letter-spacing: -.035em;
+    font-weight: 700;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 18.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 60ch;
+  }
+
+  .verdict {
+    display: flex; flex-wrap: wrap; gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--panel);
+    margin: 34px 0 0;
+    overflow: hidden;
+  }
+  .verdict div {
+    flex: 1 1 160px;
+    padding: 15px 18px;
+    border-right: 1px solid var(--rule-soft);
+  }
+  .verdict div:last-child { border-right: 0; }
+  .verdict b {
+    display: block;
+    font-family: var(--mono);
+    font-size: 25px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--green);
+  }
+  .verdict span {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ---- headings ---- */
+  h2 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 62px 0 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+    font-weight: 700;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-size: 15.5px;
+    letter-spacing: -.01em;
+    margin: 36px 0 4px;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  .col h4 {
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: -.01em;
+    margin: 28px 0 2px;
+    font-weight: 700;
+    color: var(--accent);
+    text-wrap: balance;
+  }
+  p { margin: 14px 0; }
+  .col p, .col ul, .col ol { max-width: 68ch; }
+  ul, ol { padding-left: 20px; }
+  li { margin: 7px 0; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .875em;
+    background: var(--chip);
+    padding: 1.5px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  /* ---- bit-field strip ---- */
+  .strip-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 26px 0 7px;
+  }
+  .strip {
+    display: flex;
+    width: 100%;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .strip .f {
+    padding: 9px 6px;
+    text-align: center;
+    border-right: 1px solid var(--ink);
+    color: var(--ink);
+    background: var(--panel);
+    line-height: 1.3;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .strip .f:last-child { border-right: 0; }
+  .strip .f em {
+    display: block;
+    font-style: normal;
+    font-size: 9.5px;
+    letter-spacing: .07em;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  .f.pre  { background: var(--chip); color: var(--ink-faint); }
+  .f.key  { background: var(--accent); color: var(--accent-ink); }
+  .f.key em { color: var(--accent-ink); opacity: .72; }
+  .f.crc  { background: var(--green); color: #fff; }
+  .f.crc em { color: rgba(255,255,255,.78); }
+  .f.tail { background: var(--chip); color: var(--ink-faint); }
+
+  /* ---- tables ---- */
+  .tw { overflow-x: auto; margin: 18px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+    min-width: 460px;
+  }
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    padding: 0 14px 7px 0;
+    border-bottom: 1px solid var(--ink);
+    white-space: nowrap;
+  }
+  td {
+    padding: 7px 14px 7px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  td.m, th.m { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.hi { color: var(--ink); font-weight: 700; }
+  tr:last-child td { border-bottom: 0; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 18px 0;
+  }
+  pre b { color: var(--accent); font-weight: 700; }
+  pre i { color: var(--ink-faint); font-style: normal; }
+
+  .note {
+    border-left: 3px solid var(--amber);
+    background: var(--panel);
+    border-radius: 0 3px 3px 0;
+    padding: 13px 17px;
+    margin: 22px 0;
+    font-size: 14.5px;
+  }
+  .note b {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--amber); display: block; margin-bottom: 4px;
+  }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 3px;
+    vertical-align: 2px;
+    margin-left: 8px;
+    font-weight: 600;
+  }
+  .tag.proven { background: var(--green); color: #fff; }
+  .tag.likely { background: var(--chip); color: var(--ink-soft); border: 1px solid var(--rule); }
+  .tag.open   { background: var(--chip); color: var(--amber); border: 1px solid var(--rule); }
+
+  /* ---- three-opcode grid ---- */
+  .ops { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 22px 0; }
+  .op {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 3px;
+    background: var(--panel);
+    padding: 14px 16px;
+  }
+  .op h4 {
+    font-family: var(--mono); font-size: 19px; margin: 0 0 2px; font-weight: 700;
+    letter-spacing: -.02em; color: var(--accent);
+  }
+  .op .what { font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+              text-transform: uppercase; color: var(--ink-faint); margin: 0 0 8px; }
+  .op p { margin: 0; font-size: 14px; line-height: 1.5; }
+
+  figure { margin: 24px 0; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+    margin-top: 9px; line-height: 1.5;
+  }
+  .figbox {
+    border: 1px solid var(--rule); border-radius: 3px;
+    background: var(--panel); padding: 18px 16px 12px;
+    overflow-x: auto;
+  }
+
+  footer {
+    margin-top: 76px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    font-size: 13.5px;
+    color: var(--ink-faint);
+  }
+  footer p { max-width: 68ch; }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">Format archaeology · UPA-01 cartridge ROM</p>
+  <h1>The Yamaha Playcard format, decoded</h1>
+  <p class="standfirst">Songs on a strip of magnetic tape glued to the bottom of a sheet-music card, read by the Yamaha CR-01 reader through the UPA-01 MSX cartridge. The decoder was recovered from that cartridge and checked against every card in the set.</p>
+
+  <div class="verdict">
+    <div><b>267 / 267</b><span>cards decode, CRC-verified</span></div>
+    <div><b>1.000</b><span>match to real firmware</span></div>
+    <div><b>264</b><span>cards exported to MIDI</span></div>
+    <div><b>264 / 264</b><span>survive a MIDI round trip</span></div>
+    <div><b>261 / 261</b><span>recompile inside the strip</span></div>
+    <div><b>17</b><span>new cards written, and played</span></div>
+  </div>
+</header>
+
+<div class="col">
+<p>The 16&nbsp;KB cartridge <code>Play Card System (UPA-01)</code> is a standard MSX ROM mapped at <code>0x4000</code>. Everything below was read out of its Z80 code and then checked two ways that share no assumption: against the CRC the format itself carries, and against a capture of the genuine firmware playing a card under emulation.</p>
+<p>A record of what turned out to be <em>wrong</em> along the way is kept at the end, because the wrong turns are informative and worth not re-deriving.</p>
+</div>
+
+<div class="note">
+<b>Not derived from the patents</b>
+<p>The format here was worked out from the cartridge ROM, the card images and the instruments. Yamaha's patents were read <em>afterwards</em>, and only to see whether they agreed with what had already been found. Where this page cites one it is confirming a result, never the source of it.</p>
+</div>
+
+<h2>Which machine is being described</h2>
+<div class="col">
+<p>Four machines are involved, they do <strong>not</strong> behave identically, and a great deal of what follows is one machine's reading of the card rather than the card itself. This page names the machine wherever that matters; where it says only <em>the card</em>, the claim is about the format.</p>
+</div>
+
+<table>
+  <tr><th>Machine</th><th>What it is</th><th>What it contributes here</th></tr>
+  <tr><td><strong>PC-100</strong> (1982)</td><td>the Yamaha keyboard these cards were written for</td><td>nearly every finding that is &ldquo;known by ear&rdquo;. It has <strong>no fill or drum controls at all</strong>, so anything the arrangement does came off the card and not off a panel</td></tr>
+  <tr><td><strong>PCS-30</strong> (1984)</td><td>a second Playcard-capable keyboard</td><td>a <strong>second, independent implementation</strong> &mdash; the only way to tell the format apart from one machine's reading of it. Its accompaniment patterns are the ones this project's arranger uses</td></tr>
+  <tr><td><strong>UPA-01</strong> (1985)</td><td>the <em>Play Card System</em> MSX cartridge, read through the <strong>CR-01</strong>, in a <strong>CX5M</strong> with an <strong>SFG-01</strong></td><td>nearly all the ROM-level detail, every YM2151 capture, every emulator run. The machine whose code can be disassembled, stepped and watched</td></tr>
+  <tr><td><strong>PC-1000</strong> (1983)</td><td>a later keyboard with a Chord Lesson feature</td><td>context for one hypothesis about the chord chart, which the corpus then refused</td></tr>
+</table>
+
+<div class="note">
+<b>The cartridge is a witness, not the format</b>
+<p><strong>Unqualified, &ldquo;the cartridge&rdquo;, &ldquo;the firmware&rdquo; and &ldquo;the ROM&rdquo; mean the UPA-01</strong>, because it is the one whose code this project can read. That convenience is also the main hazard on this page. The UPA-01 is a <strong>1985 port of a 1982 product, and not a faithful one</strong>: it drops chord notes where the other machines do not, gives each drum fill a fixed feel instead of taking the feel from the rhythm, and falls silent on a same-root chart entry it cannot voice. All three were written up as facts about the format before a second machine disagreed.</p>
+<p>So: <strong>where the cartridge is the only witness and the claim is about how something SOUNDS rather than what the bytes ARE, read it as &ldquo;this is what the cartridge does&rdquo; until a second machine agrees.</strong></p>
+</div>
+
+<h2>The container</h2>
+
+<h3>How the .bin files relate to the card</h3>
+<div class="col">
+<p>The extracted files are <em>almost</em> a raw card image. Each card block opens with 33 preamble bits and then a 2-bit block type; whatever produced these files dropped the first 32 of those bits.</p>
+<p>That matters because the preamble is fed to the CRC. Solving the CRC algebraically across all 267 files gives one shared starting state, <code>0x8005</code> — the value a run of zeros followed by a single <code>1</code> bit produces. The cartridge confirms it directly: before storing card data it writes its own four-byte preamble, <code>00 00 00 01</code>, which is exactly 31 zeros and a one.</p>
+<p>The same calculation pins the other end. The CRC is followed by <strong>zero padding to the next byte boundary</strong>, and then the file's <strong>last three bytes</strong> are a trailer outside the checksummed block — always <code>F</code> · four nibbles · <code>F</code>. Nothing in the cartridge's read path touches it. It is a date — see below.</p>
+</div>
+
+<p class="strip-label">Card block layout</p>
+<div class="strip">
+  <div class="f pre"  style="flex:2.2">preamble<em>33 bits · stripped</em></div>
+  <div class="f key"  style="flex:1">type<em>2 bits</em></div>
+  <div class="f"      style="flex:2.6">header<em>29 + 5N bits</em></div>
+  <div class="f"      style="flex:2.4">track 1<em>durations</em></div>
+  <div class="f"      style="flex:2.4">track 2<em>durations</em></div>
+  <div class="f key"  style="flex:1">tag<em>2 bits</em></div>
+  <div class="f"      style="flex:3.4">section<em>table + 2 opcode streams</em></div>
+  <div class="f key"  style="flex:1">00<em>2 bits</em></div>
+  <div class="f crc"  style="flex:1.5">CRC<em>16 bits</em></div>
+  <div class="f pre"  style="flex:1">pad<em>0-8 zeros</em></div>
+  <div class="f tail" style="flex:1.8">trailer<em>24 bits &middot; date</em></div>
+</div>
+
+<div class="col">
+<p style="margin-top:22px">Block type <code>1</code> is a full card. Type <code>2</code> is a continuation carrying only a section — the <code>side-b</code> files in the Japanese PC-1000 set are exactly this.</p>
+</div>
+
+<h3>Two-sided cards</h3>
+<div class="col">
+<p>Nothing in the header says "there is a side B". The signal is <strong>structural</strong>: a side-A card is a type-1 card that carries <em>no section at all</em> — header and both duration tracks, then the two-bit terminator, with no opcode streams. Every other type-1 card in the corpus has exactly one section; the three side-A cards have zero. The durations are on side A and the pitches on side B.</p>
+<p>The cartridge turns that into an explicit state. At ROM <code>0x6668</code>, a type-1 card that ends with tag <code>0</code> and no section sets a flag at <code>0xE48B</code>; every other successful path clears it. At <code>0x6608</code> a type-2 card is <strong>rejected outright</strong> (error <code>0x80</code>) unless that flag is set. So the reader is a two-state machine: after side A it is armed for side B and will accept nothing else — which is the state a keyboard's "swipe the other side" indicator reflects.</p>
+<p>Joining the halves gives a complete card, and the one-to-one duration/pitch check passes on all three pairs: 277, 144 and 273 melody events, 440, 288 and 441 obbligato, gap zero on every half.</p>
+<p><strong>The parser says which it just read, in <code>A</code>.</strong> Running the cartridge's own parse over a card image returns a code rather than a yes or no, and the two-sided codes are how a keyboard knows to ask for the other side:</p>
+</div>
+
+<table>
+  <tr><th class="m">A</th><th>Meaning</th></tr>
+  <tr><td class="m">0x00</td><td>a complete one-sided card</td></tr>
+  <tr><td class="m">0x01</td><td>a <strong>side A</strong> &mdash; a type-1 card with no section; the reader is now armed</td></tr>
+  <tr><td class="m">0x02</td><td>a <strong>side B</strong>, completing the card and clearing the flag</td></tr>
+  <tr><td class="m">0x80</td><td>refused</td></tr>
+</table>
+
+<div class="col">
+<p>A side B decodes its section <strong>on top of what its side A left in the buffer</strong>, taking the buffer pointer from <code>0xE47B</code>, so the two swipes are one operation and a side B cannot be read or checked on its own. <code>card_limits.py</code> feeds cards in the order given into one reader for exactly that reason, and refusing a lone side B is one of its checks.</p>
+</div>
+
+<h3>Checksum</h3>
+<div class="col">
+<p>CRC-16, polynomial <code>0x8005</code>, initial value 0, MSB-first, no reflection and no final XOR, folded in one bit at a time as the stream is read (ROM <code>0x61CC</code>). The stored value follows a 2-bit <code>00</code> terminator, and running the CRC over data-plus-checksum yields zero.</p>
+</div>
+
+<h2>The header <span class="tag proven">CRC-verified</span></h2>
+<div class="col">
+<p>Read MSB-first, immediately after the 2-bit block type. Field widths and lookup tables come from the ROM routine at <code>0x6248</code>.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Bits</th><th>Field</th><th>Decoding</th></tr>
+  <tr><td class="m">5</td><td class="hi">Tempo</td><td>Index into a 32-entry table of metronome marks: 40, 48, 52, 56, 60, 63, 66, 69, 72 … 176, 184, 192, 200&nbsp;bpm</td></tr>
+  <tr><td class="m">4</td><td class="hi">Rhythm</td><td>Value <code>v</code> → style <code>v+1</code>: rhumba, samba, swing, bossa-nova, rock, 16-beat, waltz, slow-rock, march, disco</td></tr>
+  <tr><td class="m">3</td><td class="hi">Accompaniment pattern</td><td>Only bit 1 is used, yielding 0 or 3. Set = play the <strong>alternate</strong> pattern of the selected rhythm, from the first bar and <strong>locked</strong> there for the whole card</td></tr>
+  <tr><td class="m">4</td><td class="hi">Melody voice</td><td>Mapped to 0–10, then through the table at ROM <code>0x5C3F</code> into the SFG-01's voice bank</td></tr>
+  <tr><td class="m">1</td><td class="hi">Sustain</td><td>Expanded to 0 or 3 — one bit per part</td></tr>
+  <tr><td class="m">3</td><td class="hi">Obbligato voice</td><td>Mapped to 1–8, then through the table at ROM <code>0x5C4B</code></td></tr>
+  <tr><td class="m">4</td><td class="hi">Key</td><td>A YM2151 note code; see below</td></tr>
+  <tr><td class="m">5</td><td><i>N</i></td><td>Alphabet size, rejected if ≥ 26</td></tr>
+  <tr><td class="m">5×<i>N</i></td><td>Alphabet</td><td><i>N</i> indices into the 32-symbol master table</td></tr>
+</table>
+</div>
+
+<h3>The voice tables</h3>
+<div class="col">
+<p>Both fields index the SFG-01's 48-voice bank, whose names sit at <code>0x1B0D</code> in that ROM in 48-byte records (a 7-character name plus FM parameters). The two cartridge tables are adjacent, and each voice has two names.</p>
+</div>
+
+<table>
+  <tr><th class="m">Melody</th><th>PC-100 panel</th><th>SFG-01 screen</th><th class="m">Obbligato</th><th>PC-100 convention</th><th>SFG-01 screen</th></tr>
+  <tr><td class="m">1</td><td><strong>piccolo</strong></td><td>PICCOLO</td><td class="m">1</td><td><strong>oboe</strong></td><td>OBOE</td></tr>
+  <tr><td class="m">2</td><td><strong>organ</strong></td><td>PORGAN1</td><td class="m">2</td><td><strong>flute</strong></td><td>FLUTE</td></tr>
+  <tr><td class="m">3</td><td><strong>violin</strong></td><td>STRING2</td><td class="m">3</td><td><strong>strings</strong></td><td>STRING1</td></tr>
+  <tr><td class="m">4</td><td><strong>trumpet</strong></td><td>TRUMPET</td><td class="m">4</td><td><strong>brass</strong></td><td>BRASS 1</td></tr>
+  <tr><td class="m">5</td><td><strong>oboe</strong></td><td>OBOE</td><td class="m">5</td><td><strong>clarinet</strong></td><td>CLARINE</td></tr>
+  <tr><td class="m">6</td><td><strong>clarinet</strong></td><td>CLARINE</td><td class="m">6</td><td><strong>piano</strong></td><td>EPIANO1</td></tr>
+  <tr><td class="m">7</td><td><strong>harpsichord</strong></td><td>HARPSIC</td><td class="m">7</td><td><strong>harpsichord</strong></td><td>HARPSIC</td></tr>
+  <tr><td class="m">8</td><td><strong>piano</strong></td><td>EPIANO1</td><td class="m">8</td><td><strong>guitar</strong></td><td>GUITAR</td></tr>
+  <tr><td class="m">9</td><td><strong>vibraphone</strong></td><td>VIBRPHN</td><td class="m"></td><td></td><td></td></tr>
+  <tr><td class="m">10</td><td><strong>guitar</strong></td><td>GUITAR</td><td class="m"></td><td></td><td></td></tr>
+</table>
+
+<div class="col">
+<p>The obbligato table is indexed 1&ndash;8 with no zero entry. Every value in both was confirmed by loading a card that uses it and reading the name off the cartridge's own screen.</p>
+<p><strong>The panel names are the ones to use.</strong> The SFG-01's are a 1985 cartridge's vocabulary; the PC-100's are printed on the keyboard these cards were written for, three years earlier, and are what a player actually saw. In panel order &mdash; five instrument buttons, then the same five with the A/B selector switched &mdash; the ten melody voices read <em>organ, trumpet, clarinet, piano, guitar, piccolo, violin, oboe, harpsichord, vibraphone</em>.</p>
+<p>Six of the ten differ, and two of those are musical rather than cosmetic: <code>STRING2</code> is a <strong>violin</strong> rather than a string section, and <code>EPIANO1</code> is simply the <strong>piano</strong>. The obbligato voices have no panel names at all, because that part is not user-selectable &mdash; it exists to play cards &mdash; so they take the same convention: <code>STRING1</code> becomes <strong>strings</strong>, the section as against the melody's violin, and <code>BRASS 1</code> becomes <strong>brass</strong>.</p>
+<p><strong>Both vocabularies are accepted wherever a voice can be named</strong>, on the command line and in the <code>Playcard:</code> line a decompiled MIDI carries; matching ignores case, spaces and punctuation. Only the panel names are written out. <span class="tag proven">confirmed</span></p>
+</div>
+
+<h3>The sustain bit</h3>
+<div class="col">
+<p>The 1-bit field is <strong>sustain</strong> — the same setting as the keyboard's own sustain button, and the <code>Sustain:</code> field the cartridge shows on screen. Loading Swan Lake and reading the panel gives <code>Sustain:on</code>; a card with the bit clear gives <code>Sustain:off</code>.</p>
+<p>The routine at ROM <code>0x5CB5</code> unpacks the field one bit at a time into <code>0xD2FC</code> and <code>0xD321</code>, which sit immediately after the melody and obbligato <em>voice</em> bytes — so the hardware wants <strong>one sustain bit per part</strong>, and that is why the ROM turns the card's single bit into the value 3 rather than 1.</p>
+<p>Twelve cards use it. Aloha Oe has sustain on its PCS-30 pressing but not its PC-100 one — the same song arranged twice, which is exactly what a performance setting should look like.</p>
+</div>
+
+<h3>The accompaniment-pattern bit</h3>
+<div class="col">
+<p>The 3-bit field selects the <strong>alternate accompaniment pattern</strong> for whichever rhythm the card chose, in force from the first bar. It reaches the firmware as <code>0xD352</code>, in the same live parameter group as the rhythm bytes, with bit 7 used as a dirty flag.</p>
+<p>This was settled by a controlled experiment rather than by inference. Flipping that one bit in a real card and repairing the CRC gives an image whose header, tracks and opcode streams are otherwise byte-identical; capturing the YM2151 while the firmware plays both then isolates exactly what the bit does. On Take the A Train, clearing it:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Channels</th><th class="m">Bit set</th><th class="m">Bit clear</th></tr>
+  <tr><td>melody (3 chans)</td><td class="m">9 / 9 / 44 notes</td><td class="m">9 / 9 / 44 — identical pitches, ≤12&nbsp;ms jitter</td></tr>
+  <tr><td class="hi">chord and bass</td><td class="m hi">50 / 50 / 50</td><td class="m hi">25 / 25 / 25</td></tr>
+  <tr><td>drums (2 chans)</td><td class="m">132 / 158</td><td class="m">132 / 158 — identical</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>Setting it on a card that lacks it does the reverse: When the Saints goes from 24/24/29 to 53/53/53 on the same three channels, again with melody and drums untouched.</p>
+<p>The alternate pattern comps twice as often — chord onsets every 0.885&nbsp;s against 1.77&nbsp;s — and the plain pattern's onsets fall on exactly every <em>other</em> onset of the alternate one. It is a genuinely different pattern rather than the same one doubled: on When the Saints the pitch range widens from 38–55 to 38–60.</p>
+<p>And the bit does not merely <em>start</em> on the alternate pattern — it holds it there.</p>
+</div>
+
+<h3>The header bit is a lock <span class="tag proven">confirmed</span></h3>
+<div class="col">
+<p><code>0xD352</code> is the live pattern state, and only three places write it: the header applies its field at <code>0x5CB2</code> — and the field expands to <strong>3</strong>, so bits 0 <em>and</em> 1 — bar mark 7 does <code>OR 0xC1</code> at <code>0x5F6F</code>, setting bit 0, and a once-per-bar revert clears bit 0 again at <code>0x6013</code>. The revert is the whole story, because it is guarded:</p>
+</div>
+
+<pre>6005  LD   A,(0xD352)
+6008  RRCA            <i>; bit 0 -&gt; carry</i>
+6009  <b>RET  NC</b>         <i>; bit 0 clear: nothing to revert</i>
+600A  RRCA            <i>; bit 1 -&gt; carry</i>
+600B  <b>RET  C</b>          <i>; bit 1 SET: do not revert</i>
+600C  RLCA / RLCA     <i>; restore A</i>
+600F  OR   080h       <i>; mark dirty</i>
+6011  AND  0FEh       <i>; clear bit 0</i>
+6013  LD   (0xD352),A</pre>
+
+<div class="col">
+<p>Bit 0 is the one-bar alternate that mark 7 sets; bit 1 is the header's. <strong>The revert returns early when bit 1 is set</strong>, so on a header-bit card bit 0 can never be cleared. Setting the header field does two things at once: it turns the alternate pattern on, and it disables the mechanism that would ever turn it off.</p>
+<p>No original card tests this — none of the five header-bit cards contains a single mark 7 — so a card was written that does both, with a byte-identical control differing only in that field and its CRC. Heard on the real firmware, the alternate pattern held for the entire duration and the accompaniment never switched back, however many mark 7s went past. The captured pattern-state writes show the mechanism directly:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Card</th><th class="m">Header write</th><th class="m">At each mark 7</th><th class="m">Revert at 0x6013</th></tr>
+  <tr><td>control, bit clear</td><td class="m">80</td><td class="m">C1 — sets bit 0</td><td class="m">C0 one bar later, three times</td></tr>
+  <tr><td>bit set</td><td class="m hi">83 — bits 0 and 1</td><td class="m">C3 — no change</td><td class="m hi">never fires</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>The two mechanisms are not symmetrical. Mark 7 borrows the alternate pattern for a bar; the header bit takes it and keeps it.</p>
+</div>
+
+<div class="note">
+<b>A firmware bug that looks like card behaviour</b>
+The UPA-01 drops the accompaniment's non-bass chord notes during playback and never brings them back, while the bass carries on. <strong>A single bar mark 7 fires it, and nothing else does.</strong> Not the alternate pattern itself: a card whose header bit LOCKS the alternate on plays sixteen bars of it over one held chord with the chord notes intact; put one mark 7 on that same card and they stop there and never return. Marks 0 to 6 never do it, in either header state, and any chart record afterwards restores the notes &mdash; the same chord restated as readily as a new one, which is why a dense chart masks the bug and a sparse one exposes it. So the fault is in the <strong>mark 7 handler</strong> rather than the accompaniment generator: with the header bit set that handler cannot even change the pattern state (<code>0xD352</code> is already <code>C3</code> and its <code>OR 0xC1</code> is a no-op), and the chord notes drop anyway. It happens to original cards too and not on real Playcard keyboards, which are not running this firmware. <strong>This was recorded for weeks as an openMSX bug, wrongly:</strong> an emulator written from scratch reproduces it exactly. A chord that stops looks just like an accompaniment mute or a pattern change, and it cost three built cards and three captures &mdash; read <code>0xD352</code> and the <code>0xE7</code> handler instead of the chord channels' key-ons. <code>new-cards/dropout_trigger.py</code> builds the eighteen cards and prints the table.
+</div>
+
+<h3>The key field is a transposition</h3>
+<div class="col">
+<p>The field is <strong>numerically a YM2151 note code</strong> — which is why the chip's four unused values, 3, 7, 11 and 15, never appear in it, the same signature that identifies the pitch opcodes. What it carries is a <strong>transposition in semitones</strong>: that code's position in the chromatic order, taken in the octave nearest zero.</p>
+<p>It does <strong>not</strong> name the key. The chip's note numbering begins at C♯, so code 0 sits at position 0 and transposes by nothing. Reading the field as a key name puts every value a semitone high, and would have 158 of the 267 cards published in C♯.</p>
+<p>It does not name the key at one remove either. The field is the <em>distance</em> the melody moves, and <strong>nothing on the card records where it started</strong> — a card is written in whatever key was cheapest to store, which is usually but not always C. So no key name can be read off this field alone, and the tools print the only honest form, a conditional one: <code>transpose +5 semitones (a card in C sounds in F)</code>. Read that as arithmetic, not as a fact about the card in front of you: the PC-100 <em>9 to 5</em> has field 6 and sounds in <strong>C</strong>, because it is written in G.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Field</th><th class="m">Shift</th><th>A card in C sounds in</th><th class="m">Field</th><th class="m">Shift</th><th>A card in C sounds in</th></tr>
+  <tr><td class="m">0</td><td class="m">0</td><td class="hi">C</td><td class="m">8</td><td class="m">−6</td><td>F♯</td></tr>
+  <tr><td class="m">1</td><td class="m">+1</td><td>C♯</td><td class="m">9</td><td class="m">−5</td><td class="hi">G</td></tr>
+  <tr><td class="m">2</td><td class="m">+2</td><td class="hi">D</td><td class="m">10</td><td class="m">−4</td><td>G♯</td></tr>
+  <tr><td class="m">4</td><td class="m">+3</td><td>D♯</td><td class="m">12</td><td class="m">−3</td><td class="hi">A</td></tr>
+  <tr><td class="m">5</td><td class="m">+4</td><td>E</td><td class="m">13</td><td class="m">−2</td><td class="hi">A♯</td></tr>
+  <tr><td class="m">6</td><td class="m">+5</td><td class="hi">F</td><td class="m">14</td><td class="m">−1</td><td>B</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>The chord chart settles it, because chords are stored at <strong>sounding pitch</strong> and are not touched by this field — so they are an independent witness to what key a card is actually in. Grouping every card by its field value and counting the chord roots its chart uses:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Field</th><th class="m">Shift</th><th class="m">Cards</th><th>Commonest chord roots</th></tr>
+  <tr><td class="m">0</td><td class="m">0</td><td class="m">156</td><td><strong>C</strong> 32%, G 21%, F 14% — I, V, IV of C</td></tr>
+  <tr><td class="m">6</td><td class="m">+5</td><td class="m">49</td><td><strong>F</strong> 32%, C 19%, B♭ 14% — I, V, IV of F</td></tr>
+  <tr><td class="m">9</td><td class="m">−5</td><td class="m">45</td><td><strong>G</strong> 27%, D 20%, C 14% — I, V, IV of G</td></tr>
+  <tr><td class="m">2</td><td class="m">+2</td><td class="m">1</td><td><strong>D</strong> 38%, A 31%, G 26%</td></tr>
+  <tr><td class="m">12</td><td class="m">−3</td><td class="m">1</td><td><strong>A</strong> 41%, F 18%, D 18%</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>Every one is C plus the shift, and never the note code's name.</p>
+<p>The field transposes rather than declares, though: field-0 cards are mostly in C but 32 are in G and 26 in A, so a card's key is a property of the music and not of this byte. What the field says is only how far to move it.</p>
+</div>
+
+<h2>The duration tracks</h2>
+<div class="col">
+<p>Two tracks, melody and obbligato, entropy-coded. Each song ships its own alphabet — up to 25 symbols drawn from a fixed master table of 32 — ordered most-frequent-first.</p>
+<p><strong>Nothing on a card is timestamped.</strong> A track is a gapless run of lengths, so where a note falls is the sum of everything before it and nothing else. There is no way to place an event a fraction of a tick late, and no way to leave a hole that is not a rest of one of the ten available lengths.</p>
+<p>That is a stronger constraint than it looks, because <strong>the chord chart and the bar marks are addressed by position in the obbligato's opcode stream</strong> rather than by time. A chord is not &ldquo;at 41.5 seconds&rdquo;; it is &ldquo;at the obbligato's 17th opcode&rdquo;, and it sounds whenever that opcode is reached. Move an obbligato event and every chord and mark hanging off it moves with it, by however long that event lasts &mdash; which is why the first rule of authoring a card is to quantise the music before compiling it. A rounding of half a tick in the wrong place puts a chord change most of a bar away.</p>
+<p>Codewords are an alternating-run prefix code: <em>k</em>+1 copies of a bit, then one opposite bit. The value is <code>2k + (1−b₀)</code>, so the two commonest symbols cost 2 bits each, the next two cost 3, and so on. Cheap to decode on a Z80 and self-synchronising.</p>
+</div>
+
+<pre><b>value  codeword          cost</b>
+  0      10                2 bits
+  1      01                2 bits
+  2      110               3 bits
+  3      001               3 bits
+  4      1110              4 bits
+  <i>…</i>
+ 24      1111111111111 0   14 bits
+ 25      0000000000000 1   14 bits</pre>
+
+<h3>The master symbol table</h3>
+<div class="col">
+<p><strong>24 ticks = one quarter note.</strong> Each duration exists in two forms, plain and with bit 7 set.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Ticks</th><th>Note</th><th class="m">With lift bit</th></tr>
+  <tr><td class="m">6</td><td>sixteenth</td><td class="m">0x86</td></tr>
+  <tr><td class="m">8</td><td>eighth triplet</td><td class="m">0x88</td></tr>
+  <tr><td class="m">12</td><td>eighth</td><td class="m">0x8C</td></tr>
+  <tr><td class="m">16</td><td>quarter triplet</td><td class="m">0x90</td></tr>
+  <tr><td class="m">18</td><td>dotted eighth</td><td class="m">0x92</td></tr>
+  <tr><td class="m">24</td><td>quarter</td><td class="m">0x98</td></tr>
+  <tr><td class="m">36</td><td>dotted quarter</td><td class="m">0xA4</td></tr>
+  <tr><td class="m">48</td><td>half</td><td class="m">0xB0</td></tr>
+  <tr><td class="m">72</td><td>dotted half</td><td class="m">0xC8</td></tr>
+  <tr><td class="m">96</td><td>whole</td><td class="m">0xE0</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>Plus six control symbols: <code>0xFF</code> repeats the previous symbol, <code>0xE1</code> ends a track or closes a repeat span, and <code>0xF0 0xF2 0xF4 0xF6</code> open one of four repeat spans. The master table's last six entries — <code>0x22 0x7D 0xE4 0x21 0xAE 0xE3</code> — are neither durations nor controls, and no card uses them.</p>
+<p><strong>Everything usable does not fit in one alphabet.</strong> Ten lengths in a plain and a lift form is 20 symbols; with <code>0xFF</code>, <code>0xE1</code> and the four span markers that is <strong>26</strong>, against a size field that rejects 26. A card wanting all of it would be one symbol over, so something always gives. No original comes close — the corpus runs from 8 to 23 symbols — but anything <em>generating</em> cards has to choose rather than assume.</p>
+</div>
+
+<div class="note">
+<b>Bit 7 is a LIFT flag, not a rest</b>
+It means <strong>the finger comes off at the end of this event</strong>, so a following event on the same pitch is struck again rather than held on. A run of equal pitches ties into one note only while the <em>preceding</em> event left the finger down. This is the single most error-prone detail in the format — it has been read wrongly twice, and testing the bit on the current event instead of its predecessor silently merges notes that should repeat.
+</div>
+
+<div class="note">
+<b>The lift bit decides tie against re-strike &mdash; but do not treat it as free elsewhere</b>
+Bit 7 decides one thing when <em>reading</em> a card: whether an event that repeats the previous pitch ties to it or strikes again. Nothing else in the decode depends on it, so it looks free everywhere else, and spending that freedom saves bytes &mdash; every distinct symbol costs 5 bits in the header and pushes every other codeword down a rank. <strong>Do not.</strong> The flag means what it says, and the playback path acts on it whether or not anything repeats the pitch &mdash; so a card generated that way plays audibly <em>staccato</em>.
+</div>
+
+<div class="col">
+<p>Measured, on the firmware, with two cards that differ in nothing else: 28 notes, no pitch repeated anywhere, same lengths, same header, same chart, same three-symbol alphabet, 47 bytes each. Every melody duration plain in one and <code>| 0x80</code> in the other. Capturing the YM2151's key on/off register:</p>
+</div>
+
+<table>
+  <tr><th>The melody's duration symbols</th><th class="m">Key down, as a fraction of the note's slot</th></tr>
+  <tr><td>bit 7 clear</td><td class="m"><strong>99.6%</strong> &mdash; held right up to the next note</td></tr>
+  <tr><td>bit 7 set</td><td class="m"><strong>83.2%</strong></td></tr>
+</table>
+
+<div class="col">
+<p>The accompaniment is untouched: chord and bass key-ons match to the millisecond across the two captures, so the melody duration alone did it. <code>new-cards/make_lift_test.py</code> builds the pair, and <code>--wav</code> renders the swipe audio to put the same question to a real keyboard &mdash; worth doing, since the gap below is a number one machine chose.</p>
+<p><strong>The release is 4 ticks early, or a sixth of the event, whichever is less.</strong> A third card carrying lifted events at four lengths measures the gap as 4.02, 4.03 and 3.96 ticks at 24, 48 and 96 &mdash; and 2.12 at 12, where four ticks would be a third of the note. So a lifted quarter sounds for 20 of its 24 ticks and a lifted eighth for 10 of its 12.</p>
+</div>
+
+<p class="strip-label">Where Yamaha sets bit 7, across the 264 originals</p>
+<table>
+  <tr><th>The event is followed by</th><th class="m">Count</th><th class="m">Bit 7 set</th></tr>
+  <tr><td>the same pitch again</td><td class="m">20438</td><td class="m">57.7%</td></tr>
+  <tr><td>a different pitch, or nothing</td><td class="m">71009</td><td class="m"><strong>2.8%</strong></td></tr>
+  <tr><td>&mdash; <i>(the event is a rest)</i></td><td class="m">20757</td><td class="m"><strong>0.0%</strong></td></tr>
+</table>
+
+<div class="col">
+<p>So the plain form is the default and the bit goes on exactly where a tie has to become a re-strike. That is what makes the PC-100 Summertime alphabet carry two lift symbols of fifteen, where setting the bit everywhere it was <em>allowed</em> gave eight of nineteen on the same music &mdash; a bigger card that also played wrong.</p>
+</div>
+
+<h2>The pitch streams</h2>
+<div class="col">
+<p>Two streams pair one-to-one with the two duration tracks: melody with track 1, obbligato with track 2. They are streams of <strong>4-bit opcodes</strong>, which is why the card data is nibble-aligned.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Opcode</th><th>Meaning</th></tr>
+  <tr><td class="m">1–7</td><td>A note letter: <code>1</code>=A <code>2</code>=B <code>3</code>=C <code>4</code>=D <code>5</code>=E <code>6</code>=F <code>7</code>=G</td></tr>
+  <tr><td class="m">0</td><td>A rest. It emits YM2151 note code 3, one of the chip's four unused values, so it cannot sound by construction — yet it still occupies a duration slot</td></tr>
+  <tr><td class="m">8, 9, A</td><td>Pitch modifier on the following note (emits <code>0xE8</code> with 1, 2, 0)</td></tr>
+  <tr><td class="m">B, C, D</td><td>Emits <code>0xE1</code> with <code>0x11</code>, <code>0x13</code>, <code>0x14</code>: a phrase counter, and the obbligato duck off and on</td></tr>
+  <tr><td class="m">E</td><td>Return from a repeat span, or end the stream</td></tr>
+  <tr><td class="m">F</td><td>Escape: read 4 more bits — under 8 is a <strong>bar-level mark</strong> controlling the drums and the accompaniment pattern, 8 and up opens a repeat span</td></tr>
+</table>
+</div>
+
+<h3>Pitch is a YM2151 key code</h3>
+<div class="col">
+<p>The byte each note opcode emits is the note field of the chip's KC register, whose block runs <code>C♯ D D♯ · E F F♯ · G G♯ A · A♯ B C</code> — so C sits at the <strong>top</strong> of a block, not the bottom. That the four unused codes are exactly what the format emits for "no note" is the structural signature that identifies the whole mapping.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Opcode</th><th class="m">ROM byte</th><th>Note</th></tr>
+  <tr><td class="m">0</td><td class="m">3</td><td><em>unused code — a rest</em></td></tr>
+  <tr><td class="m">1</td><td class="m">10</td><td>A</td></tr>
+  <tr><td class="m">2</td><td class="m">13</td><td>B</td></tr>
+  <tr><td class="m">3</td><td class="m">14</td><td>C</td></tr>
+  <tr><td class="m">4</td><td class="m">1</td><td>D</td></tr>
+  <tr><td class="m">5</td><td class="m">4</td><td>E</td></tr>
+  <tr><td class="m">6</td><td class="m">5</td><td>F</td></tr>
+  <tr><td class="m">7</td><td class="m">8</td><td>G</td></tr>
+</table>
+</div>
+
+<h3>Octave: a running register</h3>
+<div class="col">
+<p>There is <strong>no rule inferring octaves from context</strong>. The cartridge keeps an octave register, exactly like the key code it ends up writing, and the card's modifiers move it: modifier 1 raises it, modifier 2 lowers it, and modifier 0 sharpens the following note only. A note's MIDI pitch is <code>12 × (octave + 1) + chromatic_index(code) + 1</code>, plus the key shift, and the register starts at <strong>4</strong>.</p>
+<p>Flats are spelled as sharps of the letter below — an A♭ is stored as <code>&lt;sharp&gt; G</code>.</p>
+</div>
+
+<h2>Bar-level marks: drums and the alternate pattern</h2>
+<div class="col">
+<p>The escape opcode's sub-values were assumed to be eight drum fill patterns. They are a mixed bag, and <strong>all eight are now identified</strong>: value 0 mutes the drums, values 1 to 6 are fills, and value 7 switches the accompaniment to the alternate pattern for one bar. Values 0 to 3 and 7 came from original cards whose behaviour is known by ear; 4, 5 and 6 were settled by building cards that isolate them, and the six fills split by metre. Each is taken in turn below.</p>
+<p><strong>Value 0 silences the drums</strong>, and it is re-asserted for each bar the drums stay out. On I Write the Songs it appears at bars 1, 2, 3 and 4 and then stops — and the drums come in at bar 5. It appears again at bar 19 beat 4½ and at bars 20 and 21, and the drums return at bar 22. Every one of those is bar-exact. At 848 occurrences it is the commonest mark, which suits a mute rather than a fill.</p>
+<p><strong>Values 1, 2 and 3 are drum fills.</strong> A fill pattern occupies a whole bar, so one triggered mid-bar plays only the part that would remain had it started on the downbeat — which is why Night Fever's value 2 at bar 4 beat 3 is heard as a <em>partial</em> fill.</p>
+<p>Mickey Mouse March is the clearest case, because it is almost nothing but one fill repeating. It carries <strong>45 marks of value 3 and only 4 of value 0</strong>, and the value-3 marks sit on beat 1 of every bar from 2 through 44 — a fill restated once a bar for the whole song, which is exactly what is heard. Its ending confirms the mute reading independently: the last fill is at bar 44, and at bar 45 beat 1⅓ a mark 0 and a chord <code>0xFF</code> land <em>together</em>, cutting drums and accompaniment both.</p>
+<p><strong>Value 7 is not a fill</strong> — it plays the alternate accompaniment pattern for that one bar, then reverts.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Card</th><th>Marks of value 7</th><th>Heard</th></tr>
+  <tr><td>Someday My Prince Will Come</td><td class="m">one, at bar 3.00</td><td>alternate at bar 3, back to standard at bar 4</td></tr>
+  <tr><td>When You Wish Upon a Star</td><td class="m">two, at bars 1.00 and 2.00</td><td>starts alternate, standard from bar 3</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>A firmware capture of the first confirms it: bars 1, 2 and 5 play bass-chord-chord, while <strong>bar 3 alone</strong> plays bass-chord-bass-chord — a denser pattern, in the one bar the mark covers. This is the second route to the alternate pattern, and the two are not interchangeable: the header bit starts on it and <strong>locks</strong> it there, while mark 7 switches for a single bar. That is why <strong>none of the five header-bit cards contains a single mark 7</strong> — on such a card mark 7 can do nothing at all. See <em>the header bit is a lock</em> above.</p>
+</div>
+
+<h3>Values 4, 5 and 6: answered by writing a new card <span class="tag proven">confirmed</span></h3>
+<div class="col">
+<p>These three sat unidentified for a long time, guessed as "probably further fills" — because no card in the corpus isolates them. Every original card does several things at once, so nothing in the set can separate a fill from everything else happening in its bar.</p>
+<p>So the cards were written. In 2026, from this specification, using an encoder built as the inverse of the decoder: sixteen bars of 4/4 at 100&nbsp;bpm, C major held throughout, one mark on beat 1 of every odd bar from 3 to 13, a plain bar either side of each. Marks 1, 2 and 3 sit on the same card as the <strong>control</strong>, so the unknowns are compared against three known fills in the same rhythm and the same capture rather than against a memory of another card. The firmware reads them, accepts their CRC and plays them.</p>
+</div>
+
+<div class="col">
+<p>Each occupies exactly one bar, and the plain pattern resumes in the next — which is what a fill does. None duplicates another: measuring pattern overlap between bars, the plain bars agree with each other at <strong>0.94</strong>, while every marked bar sits at most <strong>0.42</strong> against a plain bar and at most <strong>0.51</strong> against any other mark. Two rhythms, rock and march, agree.</p>
+<p>So all eight sub-values are accounted for: <strong>0</strong> mutes the drums, <strong>1–6</strong> are fills, and <strong>7</strong> switches the accompaniment to the alternate pattern for one bar.</p>
+<p>The bar grid was built from the mark events themselves — they sit on beat 1 of known bars by construction — and the six fit it to within ±4&nbsp;ms. That matters, because absolute timing in a capture cannot be trusted; deriving the grid from the marks makes the comparison independent of the clock.</p>
+</div>
+
+<h3>Why there are six: metre, and only metre</h3>
+<div class="col">
+<p>The six are not interchangeable. Sorting every fill in the corpus by its card's rhythm gives a three-way split, and each family uses its own pair almost exclusively.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Family</th><th>Rhythms</th><th class="m">Cards</th><th class="m">Fills</th><th class="m">On its own pair</th></tr>
+  <tr><td>straight</td><td>rhumba, samba, bossa-nova, rock, 16-beat, march, disco</td><td class="m">156</td><td class="m">537</td><td class="m hi">94.0%&nbsp; (1, 2)</td></tr>
+  <tr><td>swing, slow-rock</td><td>swing, slow-rock</td><td class="m">68</td><td class="m">261</td><td class="m hi">98.1%&nbsp; (3, 4)</td></tr>
+  <tr><td>waltz</td><td>waltz</td><td class="m">37</td><td class="m">67</td><td class="m hi">97.0%&nbsp; (5, 6)</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p><strong>Fills 5 and 6 are used by 21 of the 37 waltz cards and by none of the other 224.</strong> Not one occurrence outside a waltz, anywhere in the corpus.</p>
+<p>That one is a hard restriction, and the reason is metre. Playing all six on purpose-built cards in 4/4 and then in 3/4 shows that a fill is a <strong>fixed pattern measured in beats</strong>, identical whatever rhythm calls it. Mark 5 sounds at 0.09, 0.67, 2.59 and 2.67 beats after the bar line on the rock card, and at exactly those four positions on the waltz card. What differs is only how much bar is left around it.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Mark</th><th>Length</th><th>In 4/4</th><th>In 3/4</th></tr>
+  <tr><td class="m">5, 6</td><td>three beats</td><td>leaves beat 4 empty</td><td class="hi">fits exactly</td></tr>
+  <tr><td class="m">1–4</td><td>four beats</td><td class="hi">fits exactly</td><td>truncated at the bar line</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>So a 3/4 fill in a 4/4 bar leaves a hole on beat 4, and a 4/4 fill in a waltz is cut off mid-phrase — which is why no arranger used either the wrong way round.</p>
+</div>
+
+<h3>Fill feel comes from the RHYTHM, and the UPA-01 gets it wrong</h3>
+<div class="col">
+<p>Three machines, and the cartridge is the odd one out.</p>
+<p><strong>The PC-100 takes the feel from the rhythm.</strong> The decisive case is <em>I Could Have Danced All Night</em>, from its own set: a <strong>disco</strong> card &mdash; a straight rhythm &mdash; carrying <strong>mark 3</strong> at bar 4.00, in the obbligato intro just before the melody enters at bar 4.62. On a PC-100 that fill sounds straight, as the tune needs; through the UPA-01 it comes out swung and wrong. The same card uses <strong>fill 2</strong> at bar 12.25, so one straight-rhythm arrangement mixes fills from both supposed "families" without a qualm.</p>
+<p><strong>The PCS-30 does the same, and its ROM shows how.</strong> The fill lookup is bank 1 with the fill NUMBER as the bit index &mdash; no rhythm enters it &mdash; and what swings a rhythm is the grid: a bar is 16 steps straight and 12 swung. The same table data lands on sixteenths under rock and on triplets under swing, for all four fills equally.</p>
+<p><strong>The UPA-01 gives each fill a fixed feel instead</strong>, whatever rhythm is selected: 1 and 2 straight, 3 and 4 swung. Heard on a march fill-test card and on the same card switched to swing, and matched by a capture. <strong>It is a bug</strong>, and it belongs with the chord dropout among the things this 1985 port gets wrong.</p>
+<p>So "fills 1 and 2 are straight, 3 and 4 are swing" was never a property of the format or of the fills. It described nothing but the cartridge's mistake.</p>
+</div>
+
+<h3>The corpus preference is real, and is now unexplained</h3>
+<table>
+  <tr><th>Rhythm family</th><th class="m">Cards</th><th class="m">Fills 1+2</th><th class="m">Fills 3+4</th><th class="m">Fills 5+6</th></tr>
+  <tr><td>straight</td><td class="m">156</td><td class="m hi">93.7%</td><td class="m">6.3%</td><td class="m">0.0%</td></tr>
+  <tr><td>swing, slow-rock</td><td class="m">68</td><td class="m">1.7%</td><td class="m hi">98.3%</td><td class="m">0.0%</td></tr>
+  <tr><td>waltz</td><td class="m">37</td><td class="m">2.3%</td><td class="m">0.0%</td><td class="m hi">97.7%</td></tr>
+</table>
+<div class="col">
+<p><strong>Fill 2 is used by 90 of the 156 straight cards and by none of the 68 swing cards</strong>; fill 1 by 106 straight and 3 swing. A real and very lopsided authoring habit &mdash; and the obvious explanation, that choosing the fill was choosing the feel, is exactly what <em>I Could Have Danced All Night</em> rules out.</p>
+<p><strong>The PC-100 has no fill controls.</strong> Nothing on that keyboard inserts a fill, so there a fill can only come from the card. Whatever wrote these cards was not somebody playing a PC-100 and pressing things as the tune went by &mdash; it was an authoring system, and nothing about it is publicly known: not its name, not its interface, not whether a fill was chosen by number or by ear.</p>
+<p>That removes the one explanation that would have accounted for the sharpness of the split &mdash; a panel whose "fill 1 / fill 2" buttons emitted different mark values per rhythm. What is left is the weaker guess that the fills are patterns whose character suits one feel better than the other once swung; otherwise the habit belongs to that unknown system, or to whoever sat at it. Neither ROM speaks to it. <span class="tag likely">open</span></p>
+<p>The metre split is untouched by any of this: 1 to 4 are four-beat patterns, 5 and 6 three-beat ones, and <strong>5 and 6 appear on 21 of 37 waltz cards and on none of the other 224</strong>.</p>
+</div>
+
+<h3>The accompaniment mute is a chord, not a control opcode</h3>
+<div class="col">
+<p>Muting the accompaniment is <strong>not</strong> done with a control opcode. The chord chart carries the value <code>0xFF</code>, which is not a chord but an instruction to stop sounding one; the next real chord starts it again. There are 825 such entries across the corpus — 988 occurrences once repeats are expanded — and every one of the 261 cards has at least one.</p>
+<p>Two passages pin it exactly. On I Write the Songs, bar 11 beat 1¾ carries a mark 0 <em>and</em> a chord <code>0xFF</code> together — drums and accompaniment both stop, which is what is heard, and both resume at bar 12. Contrast bar 19 beat 4½, which carries the mark 0 alone: there the drums drop out and the accompaniment keeps playing.</p>
+<p>That the two mutes are carried by different mechanisms — drums by a bar mark, accompaniment by a chord-chart sentinel — is precisely why they can be used independently.</p>
+</div>
+
+<h2>The control opcodes <span class="tag proven">confirmed</span></h2>
+<div class="col">
+<p>The melody stream contains <strong>no control opcodes at all</strong> — not one, on any card. Every <code>0x11</code>, <code>0x13</code> and <code>0x14</code> in the corpus is in stream 1, which is exactly right for what they turn out to do: they are about the obbligato, and about the player.</p>
+</div>
+
+<div class="ops">
+  <div class="op">
+    <h4>0x11</h4>
+    <p class="what">Phrase mark</p>
+    <p>Bumps a counter at <code>0xD360</code> that the parameter pump sends outward. Spacing piles up on 4 bars. On every card.</p>
+  </div>
+  <div class="op">
+    <h4>0x14</h4>
+    <p class="what">Melody starts here</p>
+    <p>Drops the obbligato's level from <code>0x80</code> to <code>0x60</code> and raises the melody-active flag. Restated at every entry.</p>
+  </div>
+  <div class="op">
+    <h4>0x13</h4>
+    <p class="what">Melody is finished</p>
+    <p>Restores the obbligato to <code>0x80</code> and lowers the flag, which returns the tempo to the card's own.</p>
+  </div>
+</div>
+
+<div class="col">
+<p>The firmware settles it outright. All three are decoded by one chain at ROM <code>0x5F8B</code>:</p>
+</div>
+
+<pre><b>5F8B  FE 11      CP   0x11</b>
+      3A 60 D3   LD   A,(0xD360)     <i>; a counter, sent out by the parameter pump</i>
+      3C         INC  A
+      32 60 D3   LD   (0xD360),A
+
+<b>5F99  FE 13      CP   0x13</b>
+      3E 80      LD   A,0x80
+      32 56 D3   LD   (0xD356),A     <i>; a one-bit flag -&gt; 0</i>
+      3E 80      LD   A,0x80
+      32 24 D3   LD   (0xD324),A     <i>; obbligato level -&gt; 0x80, full</i>
+      32 49 D3   LD   (0xD349),A     <i>; third part     -&gt; 0x80, full</i>
+
+<b>5FAD  FE 14      CP   0x14</b>
+      3E 81      LD   A,0x81
+      32 56 D3   LD   (0xD356),A     <i>; the same flag  -&gt; 1</i>
+      3E 60      LD   A,0x60
+      32 24 D3   LD   (0xD324),A     <i>; obbligato level -&gt; 0x60, reduced</i>
+      32 49 D3   LD   (0xD349),A     <i>; third part     -&gt; 0x60, reduced</i></pre>
+
+<div class="col">
+<p><code>0xD2FF</code>, <code>0xD324</code> and <code>0xD349</code> are the same field in three per-part parameter blocks of stride <code>0x25</code>, and the initialisation at <code>0x5D54</code> writes <code>0x80</code> to all three — so <code>0x80</code> is the default and <code>0x60</code> a reduction. The blocks are identified by their <code>+0x20</code> byte carrying the melody and obbligato <strong>sustain</strong> flags: block 0 is the melody, block 1 the obbligato. Neither opcode ever touches block 0. <strong>The melody is not ducked; the obbligato is.</strong></p>
+</div>
+
+<h3>Confirmed against the chip</h3>
+<div class="col">
+<p>Capturing every YM2151 write while the firmware plays the PC-100 Edelweiss shows the level arriving at the chip as Total Level on the obbligato's channel — register <code>0x7A</code>, the final carrier, the operator that sets output volume. Higher TL means quieter.</p>
+</div>
+
+<figure>
+<div class="figbox">
+<svg viewBox="0 0 820 168" role="img" aria-label="Timeline of Edelweiss showing the melody sounding in bars 9 to 40 and 45 to 76, with the obbligato level dropping from Total Level 34 to 36 across exactly those spans.">
+  <g font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor">
+
+    <!-- opcode markers -->
+    <g stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 3" opacity="0.65">
+      <line x1="95.6"  y1="26" x2="95.6"  y2="140"/>
+      <line x1="131.1" y1="26" x2="131.1" y2="140"/>
+      <line x1="415.6" y1="26" x2="415.6" y2="140"/>
+      <line x1="451.1" y1="26" x2="451.1" y2="140"/>
+      <line x1="735.6" y1="26" x2="735.6" y2="140"/>
+    </g>
+    <g fill="var(--accent)" font-size="10" font-weight="700" text-anchor="middle">
+      <text x="95.6"  y="20">13</text>
+      <text x="131.1" y="20">14</text>
+      <text x="415.6" y="20">13</text>
+      <text x="451.1" y="20">14</text>
+      <text x="735.6" y="20">13</text>
+    </g>
+
+    <!-- melody band -->
+    <text x="6" y="52" fill="var(--ink-faint)">melody</text>
+    <rect x="60" y="38" width="720" height="20" fill="var(--chip)"/>
+    <rect x="131.1" y="38" width="284.5" height="20" fill="var(--band)"/>
+    <rect x="451.1" y="38" width="284.5" height="20" fill="var(--band)"/>
+    <g fill="var(--ink-soft)" font-size="10" text-anchor="middle">
+      <text x="273" y="52">sounding</text>
+      <text x="593" y="52">sounding</text>
+    </g>
+
+    <!-- level line -->
+    <text x="6" y="100" fill="var(--ink-faint)">obb. TL</text>
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="60" y1="80" x2="780" y2="80"/>
+      <line x1="60" y1="112" x2="780" y2="112"/>
+    </g>
+    <g fill="var(--ink-faint)" font-size="9.5">
+      <text x="786" y="83">34</text>
+      <text x="786" y="115">36</text>
+    </g>
+    <polyline fill="none" stroke="var(--green)" stroke-width="2.5"
+      stroke-linejoin="round" stroke-linecap="round"
+      points="60,80 131.1,80 131.1,112 415.6,112 415.6,80 451.1,80 451.1,112 735.6,112 735.6,80 780,80"/>
+    <g fill="var(--ink-soft)" font-size="9.5" text-anchor="middle">
+      <text x="95"  y="74">full</text>
+      <text x="273" y="128">ducked</text>
+      <text x="433" y="74">full</text>
+      <text x="593" y="128">ducked</text>
+      <text x="758" y="74">full</text>
+    </g>
+
+    <!-- bar axis -->
+    <line x1="60" y1="140" x2="780" y2="140" stroke="var(--ink)" stroke-width="1"/>
+    <g fill="var(--ink-faint)" font-size="9.5" text-anchor="middle">
+      <text x="60"    y="156">bar 1</text>
+      <text x="131.1" y="156">9</text>
+      <text x="415.6" y="156">41</text>
+      <text x="451.1" y="156">45</text>
+      <text x="735.6" y="156">77</text>
+      <text x="780"   y="156">82</text>
+    </g>
+  </g>
+</svg>
+</div>
+<figcaption>PC-100 Edelweiss. Every transition lands within 45&nbsp;ms of its opcode. The melody's two channels enter at 34 and never move; the accompaniment's channels are untouched throughout.</figcaption>
+</figure>
+
+<div class="col">
+<p>The other three operators on the obbligato's channel wobble by ±1 note to note; the carrier alone steps and holds, which is what a level change looks like and a voice reload does not.</p>
+<p>Those five bars are exactly the ones a player who knows the card named in advance, from the sound of the real instrument, before any of it was measured.</p>
+</div>
+
+<h3>0x11 divides the card into practice passages</h3>
+<div class="col">
+<p>The counter at <code>0xD360</code> is bumped and queued outward, and the only code that reads it back is the routine that sends it (<code>0x6068</code>, 1648 times on one card) &mdash; the same shape as the flag at <code>0xD356</code>, and the same conclusion: its consumer is the keyboard. What the keyboard does with it is a <strong>repeat-practice feature</strong>. Press the button, then one key to loop a single passage or two keys to loop a range of them; on the PC-100 the selecting keys are the white keys from F2 upward. <code>0x11</code> says where one passage ends and the next begins.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Measure</th><th>Of the 3109 marks in the corpus</th></tr>
+  <tr><td class="m hi">84.3%</td><td>land <strong>exactly on a melody note onset</strong></td></tr>
+  <tr><td class="m">41.3%</td><td>land on a bar line</td></tr>
+  <tr><td class="m hi">1 of 3109</td><td>falls part-way through a melody note</td></tr>
+  <tr><td class="m">4 to 20</td><td>marks per card, median 11 &mdash; <strong>no card has more than 20</strong></td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>The middle two lines carry the argument. A passage boundary <em>cannot</em> sit in the middle of a note &mdash; there would be no way to start playing there &mdash; and the corpus obeys that to one event in 3109, which is the kind of number that stops being a tendency and starts being a rule. Meanwhile only two in five sit on a bar line, so whatever places them follows the tune and not the metre. And the count per card is <strong>bounded</strong>: a phrase counter would grow with the length of the song, while a set of passages a player selects by key is limited by how many keys there are to select with.</p>
+<p><strong>I Could Have Danced All Night</strong> (PC-100) shows the whole thing in eight bars. The obbligato opens alone; the tune enters on a C4 pickup at bar 4.62, three and a half beats before the bar line:</p>
+</div>
+
+<pre>tick     0  bar 1.00   <b>0x11</b>                      <i>the obbligato lead-in: passage 1</i>
+tick   348  bar 4.62   <b>0x11</b> + 0x14 (duck)        <i>the melody enters: passage 2</i>
+tick   744  bar 8.75   <b>0x11</b>                      <i>passage 3</i></pre>
+
+<div class="col">
+<p>The mark is at 348, not at 384 where the bar begins. A four-bar grid would put every one of them in the wrong place on a card like this, and cards like this are ordinary &mdash; a tune that starts on an upbeat is the normal case.</p>
+<p>This is attested by the instrument and strongly supported by the corpus, but it is <strong>not provable from this ROM</strong>, because the cartridge only writes the counter and sends it on. It has the same standing as the free-tempo reading of <code>0xD356</code>, and for the same reason.</p>
+</div>
+
+<h3>They are assertions, not brackets</h3>
+<div class="col">
+<p>The obvious next guess — that <code>0x14</code> and <code>0x13</code> open and close a section, strictly alternating — is <strong>wrong</strong>, and the corpus says so plainly: only 69.8% of cards alternate, and runs like <code>14 14 14</code> are common. Both handlers are idempotent, and the format already uses this idiom elsewhere: bar-mark 0 is re-asserted for every bar the drums stay out rather than toggling once.</p>
+<p><code>0x14</code> is asserted at <strong>each melody entry</strong>, including every re-entry after a rest. Measuring melody <em>onsets</em> per bar — not sounding time, which a final held note disguises — over the two bars either side:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Opcode</th><th class="m">n</th><th class="m">Onsets/bar before</th><th class="m">Onsets/bar after</th><th>Direction</th></tr>
+  <tr><td class="m">0x14</td><td class="m">478</td><td class="m">0.80</td><td class="m hi">4.59</td><td>density falls at only 2.5%</td></tr>
+  <tr><td class="m">0x13</td><td class="m">254</td><td class="m">3.71</td><td class="m hi">0.48</td><td>density falls at <strong>90.6%</strong></td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>And <strong>96.2%</strong> of the <code>0x14</code>s are immediately preceded by a rest in the melody, 72% by a rest of a bar or more. On the wider measure of sounding time, <strong>all 484</strong> expanded <code>0x14</code>s have the melody sounding in the two bars after them — a perfect record, no card excepted.</p>
+<p>So <code>0x14</code> means <em>the melody starts here</em> and <code>0x13</code> means <em>the melody has run out of material</em> — which is why <code>0x13</code> so often lands on the bar where the tune arrives at its last held note and the obbligato takes over with a flourish.</p>
+</div>
+
+<h3>Why a held flag: free tempo</h3>
+<div class="col">
+<p>The one-bit flag at <code>0xD356</code> — set by <code>0x14</code>, cleared by <code>0x13</code> — is read by exactly one thing: the outgoing-parameter scan at <code>0x60CE</code>, which tests its top bit, clears it and hands the value out. That bit is a <em>dirty</em> mark rather than data, so the read is the message leaving, not the cartridge consulting it. Nothing in this ROM acts on the flag itself. What it is <em>for</em> is nonetheless clear from its shape and from how these instruments behave.</p>
+<p>Some of these keyboards offer <strong>free tempo</strong>: playback holds until the player plays the correct note, then follows them, speeding up or slowing down to match how fast they are actually playing — so a beginner settles into a slower tempo that gives them time to find each note. At the end of a melody section the tempo returns to default, whatever free tempo had drifted it to.</p>
+<p>That is what wants a <strong>held state</strong> rather than an edge. A reset-now instruction needs no second value; a follower that waits for the correct note needs to know continuously <em>whether there is a note to wait for</em>. <code>0x14</code> says one is coming, restated at every phrase entry so the follower re-arms; <code>0x13</code> says the melody is done, so it stands down and the tempo goes back to the card's. Measured against the corpus, that is exactly where the two land.</p>
+<p>One pair of opcodes marks the melody section once, and the instrument uses it twice: duck the obbligato so the part being learned sits on top, and gate the tempo follower. A useful by-product for anyone reading these cards today — they record, for every song in the set, exactly which passages were the student's to play.</p>
+</div>
+
+<div class="note">
+<b>What is not proven here</b>
+<p>The free-tempo reading is attested by playing the real hardware, and it fits both the structure and the corpus — but it is not provable from this ROM, because the cartridge only writes the flag and queues it outward. The last step happens somewhere this code cannot show. The third ducked block, <code>0xD349</code>, is written and never read: see below.</p>
+<p><strong>The UPA-01 plays without any FM hardware at all.</strong> It was sold for MSX machines that had none: its <code>INIT</code> hunts for the signature <code>"MCHFM0"</code>, and finding nothing it drives the machine's own PSG instead. Running the cartridge with the FM slot left empty (<code>csrc/playcard --no-fm</code>) makes it do exactly that, and out come <strong>three voices</strong>.</p>
+</div>
+
+<table>
+  <tr><th>PSG channel</th><th class="m">Summertime</th><th class="m">Edelweiss</th><th>Range</th><th>What it is</th></tr>
+  <tr><td class="m">A</td><td class="m">114 notes</td><td class="m">68</td><td>C4&ndash;G5</td><td>the <strong>melody</strong></td></tr>
+  <tr><td class="m">B</td><td class="m">93</td><td class="m">139</td><td>C4&ndash;A5</td><td>the <strong>obbligato</strong></td></tr>
+  <tr><td class="m">C</td><td class="m">189</td><td class="m">53</td><td>D2&ndash;G3</td><td>a <strong>bass</strong> line</td></tr>
+</table>
+
+<div class="col">
+<p>The note counts settle it: Summertime's card carries 114 melody notes and 93 obbligato notes, and channel A opens Edelweiss <code>E4 G4 D5 C5 G4 F4 E4 E4</code>, that tune's documented opening.</p>
+<p>So this machine has three PARTS, not two, and there are three parameter blocks. Block 0 is the melody, block 1 the obbligato &mdash; and block 2 lines up with the <strong>bass</strong>, which exists as a part only when the PSG is doing the accompaniment. The duck writing to blocks 1 and 2 then reads as <em>duck the obbligato and the bass under the melody</em>, which is musically what one would want; on the FM side only the obbligato answers, because there the bass comes from the accompaniment generator rather than from a part block.</p>
+<p><strong>That is a hypothesis, not a result.</strong> What is measured is the other half: on the PSG path <strong>nothing is ducked at all</strong>. Across 108 seconds of Summertime the three volume registers are written three times each, all during boot, twelve seconds before the first note. Whatever consumes block 2's level, it is not the PSG's volume.</p>
+</div>
+
+<h3>F5 starts free tempo, and the cartridge holds the sequencer itself</h3>
+<div class="col">
+<p><code>F2</code> starts a card at its own tempo. <strong><code>F5</code> starts it in free tempo</strong>, and the difference shows without a keyboard attached: the card plays its introduction &mdash; accompaniment and obbligato &mdash; then stops dead at the first melody note, waiting for a player who is not there.</p>
+</div>
+
+<table>
+  <tr><th>Edelweiss</th><th class="m">Key-ons</th><th class="m">Stops after</th></tr>
+  <tr><td>started with <code>F2</code></td><td class="m">1375</td><td class="m">138.0 s, the end of the card</td></tr>
+  <tr><td>started with <code>F5</code></td><td class="m hi">119</td><td class="m hi">14.2 s</td></tr>
+</table>
+
+<div class="col">
+<p>And it stops in the right place. Under <code>F2</code> the <code>0x14</code> opcode &mdash; <em>melody starts here</em> &mdash; fires at 30.997 s of machine time; under <code>F5</code> the last key-on is at 30.733 s and the hold begins at <strong>31.019 s</strong>, twenty-two milliseconds later. Summertime stops at 9.0 s against 90.8, I Could Have Danced All Night at 8.5 against 149.5.</p>
+<p><strong>The waiting is done here, not on the keyboard.</strong> <code>0xD222</code> is the play mode &mdash; <strong>1</strong> for <code>F2</code>, <strong>3</strong> for <code>F5</code>, written at <code>0x5918</code>; <code>0xD225</code> is the melody note now due, bit 7 set while one is pending; <code>0xD2AA</code> is the hold flag.</p>
+</div>
+
+<pre>5B43  3a 22 d2   LD   A,(0xD222)    ; the play mode
+5B46  fe 03      CP   3             ; free tempo?
+5B48  20 3c      JR   NZ,0x5B86     ; no - dispatch the note as usual
+...                                 ; yes, and a melody note is pending:
+5B7D  32 aa d2   LD   (0xD2AA),A    ; hold, A = 1
+5B85  c9         RET                ; and do not advance
+
+59CC  3a aa d2   LD   A,(0xD2AA)    ; next tick, at the sequencer's entry
+59D0  c2 3f 5b   JP   NZ,0x5B3F     ; still holding - do nothing else</pre>
+
+<div class="col">
+<p>Playing Edelweiss in free tempo that loop ran <strong>1071 times</strong>, with the pending note <code>0xD225</code> sitting at <code>0xC4</code> throughout. Nothing releases it, because releasing it takes a note from the music keyboard &mdash; the one part of this machine that is not emulated.</p>
+<p>So the accompaniment holding for the player is the <strong>cartridge's</strong> doing. What this ROM still cannot show is the <em>following</em>: once the player has struck the note, what makes the tempo drift to match them. <span class="tag proven">measured</span></p>
+</div>
+
+<h3>The third block is written and never read</h3>
+<div class="col">
+<p>Watching every access to the three blocks while the firmware plays settles what the third one does on this cartridge: <strong>nothing</strong>. The consumer is a parameter pump at <code>0x5D94</code>, and a level reaches it through one instruction, <code>LD B,(HL)</code> at <code>0x5E2E</code>.</p>
+</div>
+
+<table>
+  <tr><th>Block</th><th>Base</th><th>Level</th><th class="m">Pumped, playing Edelweiss</th></tr>
+  <tr><td>0, the melody</td><td><code>0xD2DC</code></td><td><code>0xD2FF</code></td><td class="m">154</td></tr>
+  <tr><td>1, the obbligato</td><td><code>0xD301</code></td><td><code>0xD324</code></td><td class="m">245</td></tr>
+  <tr><td>2, unidentified</td><td><code>0xD326</code></td><td><code>0xD349</code></td><td class="m hi">0</td></tr>
+</table>
+
+<pre>6046  11 dc d2   LD DE,0D2DCh    ; block 0, the melody
+6049  cd 94 5d   CALL 05D94h
+6057  11 01 d3   LD DE,0D301h    ; block 1, the obbligato
+605A  cd 94 5d   CALL 05D94h
+606D  c9         RET             ; and that is all</pre>
+
+<div class="col">
+<p><strong>The address <code>0xD326</code> does not occur anywhere in the ROM.</strong> The byte pair <code>26 D3</code> is absent from all 16 KB, so there is no third call and no computed path to one; the routine at <code>0x606E</code>, which walks the same blocks for a different field, likewise handles exactly two.</p>
+<p>Block 2 is built like a real part all the same: the initialisation at <code>0x5D54</code> walks all three with <code>ADD HL,0x25</code>, and both duck opcodes write block 2's level in step with the obbligato's. The firmware maintains a third part and never speaks of it.</p>
+<p>Across the corpus — <strong>261 cards</strong> and the three two-sided sets besides — 611,818 key-ons, 826 duck opcodes firing on 255 of them, 57,827 reads of the obbligato's level by the pump, and <strong>zero</strong> reads of any field of block 2 by live code. The only reads of it that happen at all are the BIOS sizing RAM at boot and the cartridge's own zero-fill.</p>
+<p>So for this machine the answer is settled and negative: <strong>the UPA-01 cannot duck a third part on any card, because it never transmits one.</strong> What the third part <em>is</em> remains a question about the keyboard the cartridge was written to drive. <span class="tag proven">measured</span></p>
+<p>The 6 cards that never duck are not scattered: they are the <strong>six <code>b</code> lessons of Step by Step 1</strong>, and every matching <code>a</code> lesson ducks. A card with no melody section to mark emits neither opcode.</p>
+</div>
+
+<h2>The trailer is a date <span class="tag proven">confirmed</span></h2>
+<div class="col">
+<p>The last three bytes are the only part of a card the cartridge never reads. They were the first question asked about this format and the last one answered, and they hold a <strong>date</strong>, stored least-significant field first.</p>
+</div>
+
+<pre>   F    D    T    M    Y    F          <i>as stored, nibble by nibble</i>
+        |    |    |    +-- <b>year</b>, 2 = 1982 … 5 = 1985
+        |    |    +------- <b>month</b>, 1 to 12 (hex 1 to C)
+        |    +------------ <b>day</b>, tens digit
+        +----------------- <b>day</b>, units digit</pre>
+
+<div class="col">
+<p>Reverse the six nibbles and it reads <code>F</code> · year · month · day · <code>F</code> in the ordinary order, so the field is simply a little-endian date framed by two <code>F</code> nibbles. <code>F4152F</code> is 14 May 1982.</p>
+<p><strong>All 267 cards decode to a real calendar date</strong> — 267 independent chances to produce a 32nd of a month or a thirteenth month, and not one taken. The dates run from <strong>1982-05-14 to 1985-12-27</strong>, matching a product whose cartridge ROM is dated 1985.</p>
+<p>The clinching evidence is something the decoding cannot know about. Sorted by weekday, the cards fall overwhelmingly on working days:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Mon</th><th class="m">Tue</th><th class="m">Wed</th><th class="m">Thu</th><th class="m">Fri</th><th class="m">Sat</th><th class="m">Sun</th></tr>
+  <tr><td class="m">23</td><td class="m">16</td><td class="m">52</td><td class="m">51</td><td class="m hi">81</td><td class="m">35</td><td class="m hi">9</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>Nine Sundays out of 267 — and they are not scattered. They are two particular Sundays, 6 June 1982 and 4 July 1982, on which a run evidently carried on through the weekend.</p>
+</div>
+
+<h3>Which date, though?</h3>
+<div class="col">
+<p>What the evidence supports is <strong>"a date", and no more than that.</strong> It is emphatically not a card identifier and not a set serial: cards sharing a date carry byte-identical trailers even when they belong to <em>different sets</em>. Great Standards 2 and Latin 1 share <code>F4062F</code> and <code>F6062F</code> exactly. Barry Manilow and Sing-Along Favorites share 2–3 June 1983. Both German sets carry 12 January 1983.</p>
+<p><strong>Which step of production it records is unknown.</strong> It could be the day the physical card was made, but equally the day the data destined for the magnetic strip was created, compiled or signed off — and nothing here distinguishes those. How the card data was authored in the first place is itself unknown: by hand, or by someone composing in an internal format that a program converted. What it was not is a performance captured off a PC-100 &mdash; that keyboard has no fill controls, and every card carries per-bar fill marks. Some authoring system existed, and nothing about it is public. The weekday skew argues only that a <em>working calendar</em> is involved, which is true of either. Calling these pressing dates would be a guess dressed as a finding.</p>
+<p>With that said, the groupings are real whatever the dates mean. Most sets carry one or two consecutive days, which is what a six-card batch looks like. The two twelve-card keyboard bundles divide cleanly — the PCS-30 exactly in half:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Bundle</th><th>How its twelve cards divide</th></tr>
+  <tr><td>PCS-30</td><td class="hi">six on 1984-07-04, six on 1984-07-06</td></tr>
+  <tr><td>PC-100</td><td>five on 1982-05-28, five on 05-29, two on 06-01</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>The three Japanese PC-1000 sets are interleaved across 2–5 July 1982, with cards from all three carrying the same days — one batch covering the whole series rather than one set at a time.</p>
+<p>Two sets did not come from one batch. <strong>Popular Hits 2</strong> splits 233 days: two cards from 28 June 1982 and four from 16 February 1983. <strong>Popular Standards 2</strong> has five cards from 13–14 December 1985 and <em>Misty</em> from the 27th.</p>
+<p>Seasonal work shows up too: both Christmas sets carry <strong>mid-June 1983</strong>, half a year before they would sell.</p>
+<p>The sixteen bits are entirely accounted for by the date, so there is no room in the field for a facility, shift, region or retailer code. Those could only hide in the unused ranges of the year and day-tens nibbles, and nothing in this corpus suggests they do.</p>
+</div>
+
+<h2>How the cartridge reaches the FM chip <span class="tag proven">measured</span></h2>
+<div class="col">
+<p>It never writes the YM2151 itself &mdash; there is not one <code>0x3FF0</code> in its 16K, no <code>OUT</code> to an FM port, and no IX or IY anywhere. Its <code>INIT</code> hunts every slot for the signature <strong><code>"MCHFM0"</code></strong> at <code>0x0080</code>, and when it finds it, <strong>deliberately leaves page 0 mapped to the SFG</strong>: the jump at <code>0x40B3</code> steps over the code that would restore the slot. From then on the SFG's BIOS entry points sit at <code>0x0090</code>, <code>0x009C</code> and neighbours, its YM2151 at <code>0x3FF0</code>, and the cartridge simply calls them. That is also why the FM module is mirrored across its whole slot &mdash; the signature has to be readable at <code>0x0080</code> in page 0 while the ROM is read at <code>0x4000</code> in page 1.</p>
+<p><strong>The chip's status is read back from the DATA port, <code>0x3FF1</code></strong>, which is where the SFG's own code polls it (<code>0x2D57</code> and <code>0x2D5E</code>).</p>
+</div>
+
+<h2>A silent card usually means the FM module was not seen</h2>
+<div class="col">
+<p>The frame handler at <code>0x4813</code> is a <strong>rate divider</strong>: it calls one handler every frame, then runs a second handler as many times as a table at <code>0xCC6B</code> says for that frame &mdash; <code>00 01 01 01 00 01 01 01 01 00 &hellip;</code> &mdash; which is how a tick rate that is not a multiple of the frame rate gets made. All of it is skipped when the gate at <code>0xCC6A</code> is non-zero.</p>
+<p>That gate is loaded from <code>0xCC55</code>, and <code>0xCC55</code> is <strong>the return value of command 0</strong>, the FM voice load, which begins by checking for <code>"MCHFM0"</code> at <code>0x0080</code> all over again. So a cartridge that cannot see its FM module does not report anything: it reads the card perfectly, sets up, and then never plays a note.</p>
+</div>
+
+<h2>The keyboard is scanned 256 times a second</h2>
+<div class="col">
+<p>The cartridge's main loop calls its own matrix scanner at <code>0x46E8</code> on every pass, and that loop runs about <strong>256 times a second</strong> &mdash; far faster than the 50&nbsp;Hz frame rate. A scripted key press of one millisecond therefore lands somewhere between "never seen" and "seen twice", which is exactly what a <code>press</code> in an emulator script does. It explains a familiar annoyance: the same script sometimes needs the key pressed again by hand, and sometimes starts playback and stops it again immediately.</p>
+</div>
+
+<h2>The cartridge's sequencer ticks at 100 a second, whatever the MSX <span class="tag proven">measured</span></h2>
+<div class="col">
+<p>The cartridge's <code>INIT</code> copies a five-byte <code>RST 30h</code> stub into <strong>H.KEYI</strong> (<code>0xFD9A</code>), so every VDP interrupt enters the cartridge at <code>0x410D</code>. That gates on the VDP's own frame flag &mdash; <code>IN A,(099h)</code> at <code>0x7DD1</code> &mdash; and jumps to <code>0x431F</code>, which is <code>LD HL,(0CC58h)</code> / <code>JP (HL)</code>: a state machine dispatched through a RAM vector. <strong>One pass is one tick of the sequencer.</strong></p>
+<p>The rate that machine expects is <strong>100 ticks a second</strong>. On a card declaring 120&nbsp;bpm a quarter note measures 49.7 ticks, and bpm &times; ticks-per-quarter comes to 6000 &mdash; which is right only at 100&nbsp;Hz.</p>
+<p>No MSX VDP supplies it. A PAL machine interrupts at 50&nbsp;Hz and the music comes out at <strong>exactly half tempo</strong>; an NTSC one would give 0.6&times;. And the ROM never reads the BIOS frame-rate flag at <code>0x002B</code>, so it does not scale itself to the machine either. A sequencer clocked off the VDP would play 20% faster in Japan than in Europe, which is not something Yamaha would ship &mdash; so the VDP interrupt is almost certainly not the intended clock. The one source in a CX5M that can be programmed to a fixed rate regardless of the video standard is the <strong>YM2151's own timer</strong>, which is also the chip the cartridge already drives.</p>
+<p><strong>And it is now demonstrated, not just measured.</strong> An emulated CX5M that delivers timer A's interrupt plays a 120&nbsp;bpm card at <strong>120.4&nbsp;bpm</strong>; the same machine driven only by a 50&nbsp;Hz VDP plays it at half that. So the timer is the clock, and half tempo under an emulator means the OPM's interrupt is not reaching the firmware. <code>csrc/playcard.c</code> is the demonstration.</p>
+<p><strong>The timer values, measured rather than deduced.</strong> Running the machine in Python (<code>msx_player.py</code>) and watching what the SFG programs, the FM module starts <strong>both</strong> OPM timers with their interrupts enabled &mdash; register <code>0x14</code> = <code>0x3F</code> &mdash; and loads timer A with <code>CLKA</code> = 512, which at the chip's 3.579545&nbsp;MHz clock is a period of 9.154&nbsp;ms: <strong>109.24&nbsp;Hz</strong>. That is the clock the music was written for, and it is within 10% of the 100 a second the tempo arithmetic implies.</p>
+<p>The practical consequence is for captures: under an emulator the sequencer gets only the VDP's ticks, so <strong>anything timed in seconds off a capture is at half speed</strong>. Ratios measured within one capture are unaffected.</p>
+</div>
+
+<h2>The strip itself: F2F, and how to read or write it <span class="tag proven">confirmed</span></h2>
+<div class="col">
+<p>The cartridge sees a bit stream, but the card carries flux reversals. The encoding is <strong>F2F</strong> — the same self-clocking code as a credit-card magnetic stripe. Every bit cell opens with a reversal, and a <strong>1</strong> has a second reversal in the middle of the cell.</p>
+<p>A tape head produces dFlux/dt, so each reversal appears as a peak and the only measurement needed is the time between them. On a reference recording of a genuine Silent Night swipe, sampled at 44.1&nbsp;kHz, the gaps fall into two clean groups — <strong>136&nbsp;µs and 272&nbsp;µs, a ratio of 2.10</strong> — with no third cluster.</p>
+<p>Being self-clocking is what makes a hand swipe work at all. Across that one card the cell period drifts from 11 samples to 15, about <strong>25%</strong>, as the hand slows. A decoder that tracks the period as it goes reads it without trouble; one that assumes a fixed bit rate does not.</p>
+<p><strong>And measure the baseline, rather than assuming zero.</strong> A tape head's output can sit well away from zero for a while &mdash; a thump as the card is pushed in will do it. A trigger that compares the signal against zero then stays latched on one side and drops every reversal underneath. One recording here rides about <strong>+15000 of full scale</strong> for its first 2250 samples, which is <strong>225 bit cells, 28 bytes of card, header included</strong>, lost in silence: the envelope looks healthy, the gaps that <em>are</em> found fall into the same two clean clusters as ever, and the only symptom is that nothing parses. Taking a moving average out of the signal first recovers it exactly, CRC and all. The window has to span several bit cells &mdash; four is a good number &mdash; or it follows the data and cancels what it is supposed to be measuring against.</p>
+</div>
+
+<pre><b>   &lt;lead-in zeros&gt;   1   &lt;card image&gt;   &lt;run-out zeros&gt;</b>
+        31 bits      sync                   ~1400 bits</pre>
+
+<div class="col">
+<p>The lead-in is the run-up that lets the reader lock its clock, and the single <strong>1</strong> is the sync. That sync is also exactly why the CRC seeds at <code>0x8005</code>: 31 zeros and a one leave the register in that state, which is what the <code>.bin</code> files inherit by starting one bit later. The run-out is the blank rest of the strip, and the cartridge needs it — a zero block type is the format's own end-of-data marker.</p>
+</div>
+
+<h3>The firmware's own size limit: 4080 decoded bytes</h3>
+<div class="col">
+<p>The strip's 433 bytes are a physical fact about the tape. The cartridge has a limit of its own, and it is a different quantity: not how big the card is, but <strong>how big it decodes to</strong>.</p>
+<p>A card is read into a raw image at <code>0x8000</code> and then decoded into a second buffer at <code>0xD377</code>, and it is that second buffer the firmware guards. Two hard-coded compares, one in each decoder:</p>
+</div>
+
+<pre>6317  LD A,067h / SUB L / LD A,0E3h / SBC A,H / <b>RET C</b>     <i>the duration tracks</i>
+64C8  LD A,067h / SUB L / LD A,0E3h / SBC A,H / <b>RET C</b>     <i>the opcode streams</i></pre>
+
+<div class="col">
+<p>Both test the buffer pointer against <strong><code>0xE367</code></strong> &mdash; one on every duration symbol, the other on every opcode. Past it the decoder returns with carry set, the section parse fails, and the card is <strong>refused with error <code>0x80</code></strong>. Nothing is overwritten and nothing crashes: the cartridge's own parse state begins at <code>0xE377</code>, and the guard stops exactly <strong>16 bytes</strong> short of it.</p>
+</div>
+
+<p class="strip-label">The two buffers and the guard between them</p>
+<div class="strip">
+  <div class="f pre"  style="flex:2">0x8000<em>raw card image</em></div>
+  <div class="f"      style="flex:4">0xD377<em>decode buffer &middot; 4080 bytes</em></div>
+  <div class="f crc"  style="flex:1.4">0xE367<em>the guard</em></div>
+  <div class="f key"  style="flex:2">0xE377<em>parse state</em></div>
+</div>
+
+<div class="col">
+<p style="margin-top:22px">So the ceiling is <strong>4080 decoded bytes</strong>, and <code>card_limits.py --sweep</code> finds it from scratch by building longer and longer cards and running the cartridge's own parser over each: 1016 notes a part is accepted and 1017 refused, which is 4082 decoded bytes against 4086.</p>
+<p><strong>The strip runs out long before the firmware does.</strong> The 264 originals decode to between 158 and 1361 bytes, so the largest real card uses <strong>33%</strong> of the ceiling. At the corpus's median expansion of 2.4&times;, 4080 decoded bytes is about a <strong>1700-byte</strong> card &mdash; four times what the strip physically holds. A card can only reach the firmware's limit if it could never have been pressed in the first place.</p>
+</div>
+
+<h3>The strip is a fixed length, and that sets the maximum card</h3>
+<div class="col">
+<p>Every card is the same piece of tape at the same density, and in F2F a 1 and a 0 occupy the same cell, so what is constant across the corpus is the <strong>number of bit cells</strong>. The run-out is simply whatever the data does not use. The genuine swipe gives the capacity directly: 31 + 1 + 2128 + 1433 = <strong>3593 cells</strong>.</p>
+<p>The corpus corroborates it. The largest card is 433 bytes, which with its framing is <strong>97.3%</strong> of 3593 — and the size distribution piles up against that ceiling and stops dead:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Bytes</th><th class="m">429</th><th class="m">430</th><th class="m">431</th><th class="m">432</th><th class="m">433</th><th class="m">434+</th></tr>
+  <tr><td class="m">cards</td><td class="m">4</td><td class="m">10</td><td class="m">13</td><td class="m">4</td><td class="m">10</td><td class="m hi">0</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p><strong>37 of the 267 cards sit within four bytes of the maximum.</strong> That is not an arrangement decision; it is the tape running out, with about 2.7% left as margin. The format's largest possible card is a physical fact about the strip rather than anything in the encoding, and a card&rsquo;s run-out is fully determined by how much music it carries — a 45-byte card ends with 3201 blank bits, a 433-byte one with 97.</p>
+<p>Both directions work. A recording of a genuine swipe decodes <strong>byte-for-byte identical</strong> to the known image, and every card round-trips through audio unchanged — all 267 originals and the 8 written in 2026, at sample rates from 22.05 to 96&nbsp;kHz, 8 to 32 bits, and bit rates from 1200 to 8000 per second.</p>
+</div>
+
+<h2>Repeat structure</h2>
+<div class="col">
+<p>The compressed stream marks repeats but does not say where they go. The cartridge decodes into a byte buffer and then runs a <strong>back-fill pass</strong> which turns the markers into a call/return program.</p>
+<p><strong>While decoding</strong> (ROM <code>0x6535</code> for opcode streams, <code>0x6360</code> for duration tracks) each repeat marker emits three bytes — the marker and a two-byte hole — and records the address just past that record in <code>slot[n]</code> of a four-entry table. A later marker for the same span overwrites the slot, so the slot ends up holding the position after the <strong>last</strong> marker for that span. <strong>When the track ends</strong> (<code>0x638B</code>, resolving at <code>0x6398</code>), for each span in turn:</p>
+</div>
+
+<pre>DE = slot[n]; skip the span if the slot was never set.
+Walk the buffer from the start of this track's region:
+    byte  &lt; 0xE1   ordinary data, one byte
+    byte &gt;= 0xF0   a marker: if it is span n, rewrite it as 0xF0 and fill its
+                   hole with DE; otherwise skip its two bytes
+    otherwise      a two-byte record (0xE1/0xE7/0xE8).  Skip it, then if we have
+                   reached or passed DE, write E1 10 00 over the three bytes
+                   ending at DE - that is, over the last marker - and stop.</pre>
+
+<div class="col">
+<p>So <strong>every marker for a span except the last becomes a call to the span body, and the last becomes the return that ends it</strong>. Reading the result is then trivial: walk the bytes, <code>0xF0</code> with an address is a call, <code>0xE1 0x10</code> is a return.</p>
+<p>The objective check is that a duration track and its pitch stream must expand to the same number of events, since they pair one-to-one. That holds for <strong>all 261</strong> cards — one number that caught the largest error in the whole project.</p>
+</div>
+
+<h3>The body is the tail, and a marked track needs two terminators</h3>
+<div class="col">
+<p>That description is enough to decode a card and not enough to write one. Two things it leaves implicit are exactly the two a generator gets wrong, and both were found by building cards that failed.</p>
+<p><strong>The &ldquo;span body&rdquo; is the material <em>after</em> the last marker, not the material between markers.</strong> The call address is <code>slot[n]</code>, the position just past the last marker, so every earlier marker jumps <em>forward</em> to the tail, plays it and returns.</p>
+</div>
+
+<pre>seg1 [marker] seg2 [marker] seg3 [marker] BODY... &lt;close&gt; &lt;end&gt;
+       <b>|</b>             <b>|</b>            <b>|</b>
+       <b>call</b> ------------------------------&gt; BODY, then return</pre>
+
+<div class="col">
+<p>So with <em>k</em> markers the body is played <strong>k&nbsp;&minus;&nbsp;1</strong> times, interleaved with the short segments between the markers, and is <em>not</em> played again at the end — the last marker has become the return that finishes the track. Put the body before the markers instead and the calls replay nothing: the span resolves to identity, valid but pointless. Across the corpus <strong>517 of 522 duration tracks resolve longer than they are stored</strong>, typically about double, so replaying is what these markers are for.</p>
+<p><strong>A track carrying any marker needs two <code>0xE1</code>s at the end.</strong> A marker leaves a pending flag (ROM <code>0x636F</code>); the next <code>0xE1</code> is spent <em>closing</em> the span, and only a second one ends the track. Emit one and the parse runs straight on into the next track and the card is rejected. Silent Night's melody duration track shows it plainly, ending <code>... 30 0C 0C B0 18 END END</code>. The flag is a flag rather than a count, so one closing <code>0xE1</code> suffices however many markers precede it.</p>
+<p>Both rules hold for opcode streams too, with the end opcode <code>E</code> in place of <code>0xE1</code>. A stream with a real span needs no other terminator, since the span's own return ends it.</p>
+<p><strong>A span pays for itself only from three markers.</strong> Stored it costs the body plus <em>k</em> markers; played it yields the body <em>k</em>&nbsp;&minus;&nbsp;1 times, so the saving is <code>(k&minus;2) &times; |body|</code> less the markers. Two markers always lose.</p>
+<p><strong>The four structures compress independently.</strong> A duration track and its opcode stream are resolved by the same pass with the same four span slots, but nothing couples them: across the corpus <strong>517 of 522 part-pairs place their markers at different events</strong>, in different numbers. Silent Night's melody uses spans 0 and 1 in both, with seven markers in the track against six in the stream. That is what keeps the pairing safe — each structure need only resolve losslessly back to its own sequence, and the one-to-one pairing then holds for free.</p>
+</div>
+
+<h2>The section table is the chord chart</h2>
+<div class="col">
+<p>Not static data. The routine at <code>0x659E</code> walks the table at <code>0xE3AE</code> on every decoded opcode and, on a hit, emits an inline <code>0xE7</code> record carrying the entry's value — so the table is merged into the stream during decoding. Entries are three bytes: a value, then a 10-bit position. Positions are <strong>opcode indices within the current stream</strong>, not musical time, and because they reset per stream the table cannot reorder anything. It annotates.</p>
+<p>Each value is a chord, packed as <code>(type &lt;&lt; 4) | note</code>, where the note is a <strong>YM2151 note code</strong> — the same encoding the pitch stream uses. Types 0–3 are major, minor, seventh and minor seventh.</p>
+<p>The structural evidence is the low nibble. Across 10,220 table entries it lands on the chip's unused codes 7 and 11 <strong>exactly zero times</strong> — the same signature that identifies the pitch opcodes — and the high nibble takes only the values 0–3. Reading Someday My Prince Will Come's table straight out gives:</p>
+</div>
+
+<pre>F | A7 | Bb | Bbm | C#7 | C7 | F | A7 | Bb | Am7 | D7 | Gm | D7 | Gm | Bbm7 | C7 | F</pre>
+
+<div class="col">
+<p>which is the song. Three independent confirmations: a player's ear (bar 1 F major, bar 3 A7, bar 4 unchanged — and the table has no entry at bar 4, exactly as it should not); the progression being the tune's real changes; and a firmware capture whose bass root motion runs F, F, A, A, B♭ across bars 1–5, matching the chart bar for bar.</p>
+<p><strong>All four types are now confirmed directly</strong> — see below. Chords are stored at <strong>sounding pitch</strong>: they are not transposed by the key field, though the melody is.</p>
+<p><strong>47 entries name a root the chip cannot play. They are not mutes: they mean &ldquo;the root already sounding, with this quality&rdquo;.</strong> Across 22 of the 267 cards the low nibble is 3 &mdash; one of the YM2151's four unused note codes, and the very code the pitch stream emits for a rest. The type nibble is valid on every one, and only three values occur: <code>0x23</code> on 33 of them, <code>0x13</code> on 8, <code>0x33</code> on 6. <code>0x03</code>, which would be a major, appears nowhere.</p>
+<p><strong>The PCS-30 implements the convention explicitly.</strong> Its converter looks the note code up in a table that maps the chip's unused codes to <code>0xFF</code>, meaning <em>do not update the root</em>, and then ORs the type nibble onto the chord already sounding (see the PCS-30 section below &mdash; run, not read). So <code>0x23</code> over a sounding C gives C7, and over a sounding G7 gives G7 unchanged.</p>
+<p><strong>The corpus agrees, four ways.</strong> Resolving the repeats and walking the chord state in playback order gives 83 of these entries:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><td>every change one of them makes</td><td class="hi">adds a seventh &mdash; C to C7, Gm to Gm7, Am to Am7</td></tr>
+  <tr><td>entries that move the root</td><td class="hi">none</td></tr>
+  <tr><td>entries whose result is the chord already sounding</td><td class="m">61 of 83</td></tr>
+  <tr><td>entries followed by a <em>different</em> chord within a bar</td><td class="m">93%</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>And they are placed nothing like a mute. A <code>0xFF</code> mute lands 6 to 12 ticks after a downbeat 35% of the time &mdash; the documented &ldquo;sound one chord and stop&rdquo; idiom &mdash; while <strong>not one of these 83 falls on a bar line at all</strong>, and 39.8% sit on beat 4 or later against 9.5% of mutes. The two occupy disjoint positions in the bar.</p>
+<p>The OR is doing real work, not just adding a bit. On Fly Me to the Moon an entry of type 2 arrives over a sounding Am and yields <strong>Am7</strong>, which is that tune's chord; replacing the type rather than ORing it would have given A7.</p>
+</div>
+
+<h3>Two thirds of them change nothing, and that is the interesting part</h3>
+<div class="col">
+<p>The 83 split cleanly in two, and the halves behave differently.</p>
+</div>
+
+<table>
+  <tr><th></th><th class="m">Changes the chord</th><th class="m">Changes nothing</th></tr>
+  <tr><td>how many</td><td class="m">22</td><td class="m hi">61</td></tr>
+  <tr><td>median gap to the next chord</td><td class="m">2.00 beats</td><td class="m hi">1.00 beat</td></tr>
+  <tr><td>within a beat of the next chord</td><td class="m">13%</td><td class="m hi">54%</td></tr>
+  <tr><td>commonest rhythm</td><td class="m">rock</td><td class="m hi">bossa-nova, 20 of 61</td></tr>
+</table>
+
+<div class="col">
+<p>The 22 are harmony: add a seventh, and it stands for a couple of beats. The 61 are a <strong>restatement of the chord already sounding, placed a beat or less before the next one arrives</strong> &mdash; and they pile into bossa-nova, where pushing the chord ahead of the beat is the whole character of the style. On Antonio's Song all fifteen sit on the last quaver of the bar, before a change on the next downbeat.</p>
+<p>The best reading of the 61 is a <strong>re-strike</strong>: sound the chord again, early, without changing it. That is invisible to a model that tracks only harmony, which is why they look inert.</p>
+<p><strong>They are not free.</strong> Each occurrence spends one of the 62 chart positions, exactly as naming the chord in full would. Someday My Prince Will Come sits at <strong>61 of 62</strong> and still spends two of them on entries that change no harmony at all, which says whatever they do matters to somebody.</p>
+</div>
+
+<h3>Does one of them reset something? Not on the PCS-30</h3>
+<div class="col">
+<p>If the inert entries are doing anything, the obvious candidate is <strong>state</strong>: restarting the accompaniment pattern, re-striking the chord, resetting the bass phase. A model that tracks only harmony would never show it, so the firmware was run rather than reasoned about. Two machines were set up identically &mdash; an A sounding, the pattern at step 7 &mdash; each given one chord value through the converter at <code>0x28BA</code> and the latch at <code>0x1E60</code>, and all 32K of RAM compared.</p>
+</div>
+
+<table>
+  <tr><th>Given</th><th>Chord byte after</th><th>RAM against &ldquo;A7 in full&rdquo;</th></tr>
+  <tr><td>A7 spelled in full</td><td class="m">29 = A7</td><td>&mdash;</td></tr>
+  <tr><td><strong>same-root <code>0x23</code></strong></td><td class="m">29 = A7</td><td class="hi">identical in every byte</td></tr>
+  <tr><td>A spelled again</td><td class="m">09 = A</td><td>differs only in the chord byte</td></tr>
+  <tr><td>same-root <code>0x13</code></td><td class="m">19 = Am</td><td>differs only in the chord byte</td></tr>
+  <tr><td>mute <code>0xFF</code></td><td class="m">0F = no chord</td><td>differs only in the chord byte</td></tr>
+</table>
+
+<div class="col">
+<p>With an A7 already sounding, so that <code>0x23</code> is a true no-op, restating A7 in full and sending <code>0x23</code> again leave the machine <strong>identical in every byte</strong>.</p>
+<p>The static reading agrees. The chord path writes exactly two bytes &mdash; the staging byte <code>0x8044</code> and the live chord <code>0x8043</code> &mdash; and the accompaniment <strong>step counter at <code>0x8038</code> has four writers in the whole ROM</strong>, none of them reachable from a chart entry. The pattern runs its own 32-step cycle whatever the chart does; a chord value only supplies the root that each step's degree is added to.</p>
+<p><strong>So on this machine there is nothing to reset, and neither form resets it.</strong> Whatever the inert entries are for, the answer is not here. <span class="tag proven">measured</span></p>
+</div>
+
+<h3>Whose habit is it</h3>
+<table>
+  <tr><th>Set</th><th class="m">Cards</th><th class="m">Using one</th></tr>
+  <tr><td>17-5xx albums</td><td class="m">186</td><td class="m hi">22</td></tr>
+  <tr><td>PC-1000 (Japan)</td><td class="m">27</td><td class="m">0</td></tr>
+  <tr><td>PC-100</td><td class="m">12</td><td class="m">0</td></tr>
+  <tr><td>PCS-30</td><td class="m">12</td><td class="m">0</td></tr>
+  <tr><td>German</td><td class="m">12</td><td class="m">0</td></tr>
+  <tr><td>Step by Step</td><td class="m">12</td><td class="m">0</td></tr>
+</table>
+
+<div class="col">
+<p>Every card that uses one is in the international album series, dated <strong>1982-05-14 to 1985-01-24</strong> with sixteen of the twenty-two in 1982. No keyboard's own set uses the convention, and neither do the twelve teaching cards.</p>
+</div>
+
+<h3>The chord-lesson reading, and why the distribution refuses it</h3>
+<div class="col">
+<p>The <strong>PC-1000</strong> (late 1983) has a <em>Chord Lesson</em>: the accompaniment holds until the player fingers the chord, the same idea as free tempo applied to the left hand. A &ldquo;keep the root, add this quality&rdquo; entry is shaped like an instruction to a pair of hands rather than like harmony &mdash; and on these keyboards' single-finger chording the type nibble is literally <em>which extra key sits beside the root</em>: minor takes the black key to the left, seventh the white key, a minor seventh both. On that reading <code>0x23</code> says <strong>add one white key</strong>, which is exactly a lesson-sized instruction, and the 73% that change nothing become &ldquo;you should be holding this now&rdquo; rather than dead weight.</p>
+<p>It is a good fit in form, and the distribution refuses it anyway:</p>
+</div>
+
+<ul>
+<li><strong>The machine with the feature never uses them.</strong> All 27 PC-1000 cards in the corpus carry none.</li>
+<li><strong>Most of the cards predate it.</strong> Sixteen are from 1982, the earliest 1982-05-14, more than a year before the PC-1000 existed.</li>
+<li><strong>The twelve Step by Step teaching cards carry none</strong>, and if any set were cueing a learner's hands it would be those.</li>
+<li><strong>The convention can only add.</strong> An OR cannot clear a bit, so it can never say <em>release</em> a note &mdash; and half of what a chord lesson has to tell you is when to let go.</li>
+<li>The 61 inert entries sit where a <strong>push</strong> sits, in the styles that push.</li>
+</ul>
+
+<div class="col">
+<p>So: shaped like a cue, distributed like an arranging habit. Settling it needs a PC-1000 ROM, and no dump is known to exist. <span class="tag likely">by distribution</span></p>
+<p><strong>Yamaha's own patent does not explain them either.</strong> US 4,587,878, which covers the ancestor of this chart, has nothing to say about a root code naming no note, no mechanism for changing a chord's type while keeping its root, and no lesson or waiting mode at all. What it does confirm is the frame the question sits in: a chord-name record is a <strong>state assignment</strong> &mdash; &ldquo;the current chord is now this&rdquo; &mdash; so a same-root entry is a state <em>update</em> rather than an assignment, which is what the PCS-30 implements. Still no reason for an arranger to write one that updates nothing.</p>
+</div>
+
+<h3>The cartridge does not implement it, and falls silent</h3>
+<div class="col">
+<p>On the UPA-01 these entries stop the accompaniment dead. That is measured, not inferred: no original card isolates one, so two cards were written that do nothing else, the second giving each value four bars of silence to lapse in with <code>0xFF</code> as the control in the same capture.</p>
+</div>
+
+<pre>bar    1   2  3  4  5    6   7  8  9 10   11  12 13 14 15   16  17 18 19 20   21  22 23 24
+      C  <b>FF</b>  .  .  .   C  <b>13</b>  .  .  .   C  <b>23</b>  .  .  .   C  <b>33</b>  .  .  .   C   .  .  .</pre>
+
+<div class="tw">
+<table>
+  <tr><th>Block</th><th>Value</th><th class="m">C major bar before</th><th class="m">Its four bars</th><th class="m">Drums</th></tr>
+  <tr><td class="m">bars 2&ndash;5</td><td><code>0xFF</code>, the mute</td><td class="m">4 chord + 3 bass</td><td class="m hi">0</td><td class="m">31&ndash;32</td></tr>
+  <tr><td class="m">bars 7&ndash;10</td><td><code>0x13</code></td><td class="m">4 chord + 4 bass</td><td class="m hi">0</td><td class="m">31&ndash;32</td></tr>
+  <tr><td class="m">bars 12&ndash;15</td><td><code>0x23</code></td><td class="m">4 chord + 4 bass</td><td class="m hi">0</td><td class="m">31&ndash;32</td></tr>
+  <tr><td class="m">bars 17&ndash;20</td><td><code>0x33</code></td><td class="m">4 chord + 4 bass</td><td class="m hi">0</td><td class="m">31&ndash;32</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>Nothing sounds in any of the sixteen bars, on any of the four values, while the drums run untouched. Bars 21&ndash;23 are the control that makes it airtight: they carry one C major entry and then nothing at all, and the accompaniment plays in every one of them &mdash; so the silence is caused by the entry and not by the absence of one, which is the only other thing those bars have in common.</p>
+<p>The handler at <code>0x5FC6</code> is three instructions &mdash; <code>LD A,C</code>, <code>OR 0x80</code>, <code>LD (0xD353),A</code> &mdash; so the value reaches the accompaniment generator unaltered, with root code 3, which it cannot voice.</p>
+<p><strong>So the cartridge is the machine that gets these wrong.</strong> The 22 cards carrying them were made between May 1982 and January 1985; the cartridge ROM is dated 1985 and the PCS-30 is 1984. A card pressed for the PC-100 era is asking for a convention the later cartridge does not know, and where an arranger wrote &ldquo;keep this chord and make it a seventh&rdquo; the cartridge plays nothing at all.</p>
+</div>
+
+<h3>The cartridge's table holds 62 entries, not 63</h3>
+<div class="col">
+<p>The parse loop at <code>0x6454</code> loads <code>D</code> with <code>0x3F</code> and stops when that counter runs out — but it stops <strong>without reading the end-of-table marker</strong>, so a table of 63 leaves ten bits unread and everything after it, both opcode streams included, is parsed from the wrong bit. The usable maximum is therefore <strong>62</strong>.</p>
+<p>The corpus says exactly that. The largest chart in it is <strong>62 entries</strong> — I Won't Last a Day Without You — and nothing reaches 63. The format is used right up to the ceiling and never past it, the same shape as the 433-byte length limit: a physical stop the arrangers worked against.</p>
+<p><strong>Yamaha patented this shape three years earlier.</strong> US 4,587,878 (Nippon Gakki, priority 27 June 1981) describes an earlier machine of the same family whose chord data is built the way this chart is: a <strong>chord name recorded once</strong>, followed by <strong>several timing records</strong> pointing at it, each an address into the melody note sequence in memory. That is exactly the two kinds of record here &mdash; a <code>code == 15</code> value naming the chord, and position records saying where it applies &mdash; and it is why only the positions count against 62. Edelweiss is 34 timing records referring to 10 distinct chords. The patent is not this format: its melody notes are a 6-bit octave-plus-note code, it has no obbligato, no bar marks and no pattern selection, and its timings index the melody rather than the obbligato. It is the ancestor.</p>
+<p>The value-change records do not count against it. Those are the <code>code == 15</code> case, which sets the current chord and continues without consuming a slot, so real cards reach <strong>83 records</strong> in a table whose counter only ever sees the 62 positions.</p>
+<p>This is the <strong>cartridge's</strong> limit and not the format's: the PCS-30 keeps the chart as byte pairs in a span with no counter and has no such ceiling (see below). A card has to satisfy whichever reader is tightest, which is what makes 62 the number that matters.</p>
+<p>This is a hard limit on anything that generates cards, and a sharper one than the length: expanding a card's repeats multiplies its chart entries, so a song whose chart fits comfortably when compressed can need well over 62 written out flat. Of the 264 cards, <strong>101 exceed it</strong> once their repeats are resolved.</p>
+</div>
+
+<h3>The table is grouped by value, not sorted by position</h3>
+<div class="col">
+<p>An entry costs ten bits for its position, and a further ten every time the value <strong>changes</strong> from the previous entry &mdash; the <code>code == 15</code> record that sets the current chord. Nothing requires the positions to be in order: the routine at <code>0x659E</code> scans the whole table against its opcode counter on every decoded opcode, so an entry is found wherever it sits.</p>
+<p>So the cheap layout is to <strong>group the entries by value</strong>: all the positions of one chord together, then all the positions of the next. The table then pays one value record per <em>distinct chord</em> instead of one per change. The originals do exactly this, and the PCS-30's decoded chord tables show it plainly &mdash; they come out grouped by value with the positions <strong>descending</strong> inside each group, which no position-ordered reading would produce.</p>
+<p>The saving is large on a chart that alternates. On It's Only a Paper Moon the original spends 622 bits on 52 entries; sorted by position the same chart costs 932 bits for only 46. That one change took thirteen cards under the 433-byte limit.</p>
+</div>
+
+<h3>A chart entry fires once, at the obbligato's position <span class="tag proven">confirmed</span></h3>
+<div class="col">
+<p>Positions are opcode indices, and the cartridge walks the table on every decoded opcode of <strong>both</strong> streams (<code>0x659E</code>) — which raises an obvious worry. An entry at position <em>P</em> would also be emitted into the melody stream and fire at the melody's opcode <em>P</em>, a completely different musical moment, since the two streams run at different opcode rates. <strong>It does not happen.</strong> Only the obbligato's copy reaches the chord handler.</p>
+<p>A card was written to make the two moments impossible to confuse: sixteenth notes in the melody, sixteen opcodes to the bar, against whole notes in the obbligato, one to the bar. An entry at position 17 therefore falls in <strong>bar 2 of the melody and bar 17 of the obbligato</strong>. Breakpointing the <code>0xE7</code> handler at <code>0x5FC6</code>, which writes the live chord byte to <code>0xD353</code>, and playing the card on the real firmware:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>What</th><th>When</th></tr>
+  <tr><td>the entry at position 1</td><td>at the start, as both readings predict</td></tr>
+  <tr><td>the entry at position 17</td><td class="hi">0.05 s before the obbligato's seventeenth note</td></tr>
+  <tr><td>anything at the melody's opcode 17</td><td class="hi">nothing — a 43-second silence in the log</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>The melody was running throughout, striking a note every 0.17 s, so it passed its own opcode 17 within three seconds of starting. No chord record appears there, or anywhere, until the obbligato arrives at the same index.</p>
+<p>This is read from the cartridge's own handler rather than from the audio, so the chord-dropout artifact cannot affect it, and it is a <em>local</em> comparison — a record against the note beside it — which survives the emulator's unreliable absolute timing. The PCS-30 agrees structurally: that machine keeps the chord chart as its <strong>own span</strong> and never merges it into either stream, so the cartridge's inlining is a decoding strategy rather than something the format asks for.</p>
+</div>
+
+<h3>How the UPA-01 voices an accompaniment chord <span class="tag proven">confirmed</span></h3>
+<div class="note">
+<b>This one is the cartridge's, not the format's</b>
+<p>Nothing below is on the card: the card names a root and one of four types, and this is how <em>this</em> machine turns that into sound on a YM2151. The PCS-30 reaches the same four chords by a different route entirely, and what the PC-100 does is not known. Read it as the answer to &ldquo;why does a capture of the cartridge look like it is playing minor chords&rdquo;, which is the question it was written for.</p>
+</div>
+<div class="col">
+<p>Reading chord quality off a capture looked impossible for a long time. The accompaniment's two chord channels receive key codes a <strong>minor third apart on every chord</strong> — C and D♯ for a C chord, G and A♯ for a G chord, D and F for a D chord — and those key codes do not change at all between major, minor, seventh and minor seventh. A card built to hold each of the four types in turn on one root sends <em>identical</em> key codes to the chip for all four.</p>
+<p>The chord tones are not the key codes. They are the <strong>operator frequency multipliers</strong>, and the trick is the harmonic series: <code>MUL</code> 4 : 5 : 6 is exactly a just major triad. Both chord channels run <strong>algorithm 4</strong> — two independent two-operator stacks — so each channel has two carriers that sound independently. Holding the root fixed and stepping through the four types isolates what each one changes:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Register</th><th class="m">Major</th><th class="m">Minor</th><th class="m">Seventh</th><th class="m">Minor 7th</th></tr>
+  <tr><td>ch3 C2 <code>MUL</code></td><td class="m hi">5</td><td class="m">6</td><td class="m hi">5</td><td class="m">6</td></tr>
+  <tr><td>ch4 C1 <code>MUL</code></td><td class="m hi">5</td><td class="m">4</td><td class="m hi">5</td><td class="m">4</td></tr>
+  <tr><td>ch4 C2 <code>MUL</code></td><td class="m">6</td><td class="m">6</td><td class="m">6</td><td class="m">6</td></tr>
+  <tr><td>ch4 C2 <code>TL</code></td><td class="m">127 <em>silent</em></td><td class="m">127 <em>silent</em></td><td class="m hi">39</td><td class="m hi">39</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>ch3 is tuned to the root and ch4 three semitones above it, and each carrier sounds root × MUL:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Type</th><th>ch3 C1</th><th>ch3 C2</th><th>ch4 C1</th><th>ch4 C2</th><th>Sounds</th></tr>
+  <tr><td>major</td><td>×4 → C</td><td>×5 → <strong>E</strong></td><td>×5 → G</td><td><em>silent</em></td><td class="hi">C E G</td></tr>
+  <tr><td>minor</td><td>×4 → C</td><td>×6 → G</td><td>×4 → <strong>E♭</strong></td><td><em>silent</em></td><td class="hi">C E♭ G</td></tr>
+  <tr><td>seventh</td><td>×4 → C</td><td>×5 → E</td><td>×5 → G</td><td>×6 → <strong>B♭</strong></td><td class="hi">C E G B♭</td></tr>
+  <tr><td>minor 7th</td><td>×4 → C</td><td>×6 → G</td><td>×4 → E♭</td><td>×6 → B♭</td><td class="hi">C E♭ G B♭</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>So the major third is the fifth harmonic of the root channel, the fifth is the fifth harmonic of the minor-third channel, and the seventh is the sixth harmonic of that channel — gated by <code>TL</code>, muted for a plain triad and unmuted for a seventh. Two channels and two fixed pitches give all four chord types.</p>
+<p>The arithmetic lands where it should: +0.00, +3.86 and +6.86 semitones for a major triad, +0.00, +3.00 and +7.02 for a minor one. Those are just intervals — the third 14 cents flat of equal temperament, the fifth 2 cents sharp — so the accompaniment is in just intonation over its own root.</p>
+<p>This is why the first reading was wrong. The key codes alone say "root plus minor third" for every chord on every card, which looks like a minor triad and is nothing of the kind. <strong>Chord quality is readable from a capture after all</strong> — from <code>MUL</code> and <code>TL</code>, never from <code>KC</code>. The finding started from a listener naming the notes of a C major chord as C, E and G against a capture that appeared to show C and E♭.</p>
+</div>
+
+<h2>What is not on the card</h2>
+<div class="col">
+<p>Chords, bass and drums are <strong>not</strong> in the card data. They come from the firmware's rhythm and accompaniment pattern generator. The card selects <em>which</em> pattern — the rhythm field picks one of ten styles and the accompaniment-pattern bit picks the standard or alternate form — but the pattern content itself lives in the firmware. Those tables have now been read out of <em>another</em> instrument: the UPA-01's own are still unextracted, but the PCS-30 keyboard's are decoded in full &mdash; see below, where the same rhythm numbering and the same chord-type encoding turn up in a machine that shares nothing else with the cartridge.</p>
+<p>What the card carries is melody, obbligato, tempo, rhythm and pattern selection, voices, key, sustain, drum fills, and the obbligato's balance against the melody. The arrangement, not the accompaniment itself.</p>
+</div>
+
+<h2>A second implementation: the Yamaha PCS-30 <span class="tag proven">confirmed</span></h2>
+<div class="col">
+<p>The UPA-01 cartridge is not the only thing that reads these cards. The <strong>PCS-30</strong> (1984) is a 32-key Playcard keyboard with its own Z80 and a 32&nbsp;KB ROM &mdash; a far smaller machine, with a squarewave YM2142 in place of the SFG-01's YM2151, and no code in common with the cartridge. It reads the same strips, so it is an independent witness to the format, and its ROM answers two things the cartridge cannot. Only the first 15&nbsp;KB of the image is populated.</p>
+<p>Everything below was read statically. <strong>No emulator for this keyboard exists</strong> &mdash; MAME's driver is a non-working skeleton &mdash; so nothing here could be checked by running it.</p>
+</div>
+
+<h3>Its built-in demos are decoded card data</h3>
+<div class="col">
+<p>The keyboard plays three demos with no button for them: Mozart's Symphony No.&nbsp;40, Dance of the Hours and Chopin's Nocturne. They sit at ROM <code>0x3726</code>, <code>0x3873</code> and <code>0x39BC</code>, gated by bits 0, 1 and 3 of <code>0x8000</code>, each handed to a loader at <code>0x0820</code>.</p>
+</div>
+
+<pre><b>12 words</b>   six (start, end) offsets into the body; bit 15 of a
+           pitch-stream offset selects the nibble within the byte
+ <b>3 bytes</b>   copied to 0x802D - the performance settings
+ <b>1 word</b>    body length
+ <b>body</b>      alphabet | melody durations | obbligato durations
+           chord table | melody pitches | obbligato pitches</pre>
+
+<div class="col">
+<p>They are <strong>not card images</strong> and not a format of the keyboard's own. They are the exact RAM image a swiped card decodes into, with the span index precomputed. The loader stores those twelve offsets into twelve RAM slots and block-copies the body to <code>0x80DA</code>; the card-reading path at <code>0x0383</code> fills <em>the same twelve slots</em> and <em>the same buffer</em>, a byte at a time, from the reader at <code>0xE020</code>. The demo loader is a block copy where the card path is a parser, and downstream nothing can tell them apart.</p>
+<p>What survives from the card unchanged: the <strong>pitch streams</strong>, the same 4-bit opcodes with the same escape <code>0xF</code> and the same running octave register, read at <code>0x25BC</code> and <code>0x2626</code>; the <strong>alphabet</strong>, still ordered most-frequent-first and still exactly the set of values the duration tracks use; and the convention that <strong>bar marks and control opcodes live only in the obbligato</strong>. That last rule was derived from the 267-card corpus, and here it holds on different hardware.</p>
+<p>What does not survive is the <strong>duration tracks</strong>. On a card they are alternating-run prefix codewords indexing the alphabet; here they are the alphabet's <em>values</em>, one byte per read. The alphabet is kept anyway, though playback no longer needs it to decode.</p>
+<p>The clinching check is that all three demos exist as cards in this corpus. Decoded, the Nocturne demo is <strong>32 of 32 notes identical in absolute pitch</strong> to both the Easy Classics 2 card and <code>pcs-30_nocturne</code> &mdash; the keyboard's own bundled card. Symphony No.&nbsp;40 matches its card's interval contour at 100% from the first note, sounding a tone higher because the demo does not apply the card's transposition. Dance of the Hours matches at 89%, so that one is a slightly different arrangement.</p>
+</div>
+
+<h3>Its accompaniment pattern tables</h3>
+<div class="col">
+<p>Eight tables of 320 bytes sit at <code>0x2D26</code>, ending exactly where the demo data begins. Each is ten rows of thirty-two, addressed at <code>0x14CD</code> as <code>base + rhythm*32 + step</code>.</p>
+<p>The ten rows are <strong>the Playcard's own rhythm numbering</strong> &mdash; rhumba, samba, swing, bossa-nova, rock, 16-beat, waltz, slow-rock, march, disco. The metre proves it independently: exactly three rows fill only 12 of each 16 steps, and they are <strong>swing, waltz and slow-rock</strong>, precisely the styles that take the swing and waltz drum fills, and for the same reason. The PCS-30's panel offers six rhythms; all ten are in the ROM, and a card can reach the rest.</p>
+<p>A pattern byte is a <strong>1-based semitone offset from the chord root</strong>: 1 the root, 5 the major third, 8 the fifth, 13 the octave. <code>0xFF</code> is a rest and <code>0x00</code> a dead slot.</p>
+</div>
+
+<h3>The chord byte, and what a seventh does</h3>
+<div class="col">
+<p>The live chord is one byte at <code>0x8043</code>: root in bits 0&ndash;3, <strong>minor</strong> in bit 4, <strong>seventh</strong> in bit 5 &mdash; the chord chart's own four types in one byte instead of a nibble pair. The two bits act by entirely different mechanisms.</p>
+<p><strong>Minor is a substitution.</strong> At <code>0x16E3</code>, when bit 4 is set and the pattern degree reduces to exactly 5, the note is decremented &mdash; a major third becoming a minor third, one degree, in place. That single instruction is also what fixes the 1-based reading of the table bytes.</p>
+<p><strong>Seventh switches tables.</strong> The selector at <code>0x1620</code> tests bit 5 and picks a different 320-byte table for the whole pattern. A seventh chord does not get the triad pattern with a note altered; it gets a pattern written for a seventh.</p>
+<p>The eight tables divide two ways. Odd tables carry the <strong>bass</strong> and even ones the <strong>chord</strong> &mdash; their ranges do not overlap, the bass spanning the root to +16 semitones and the chord +4 to +29. Within each voice one table serves plain triads and another sevenths, and the set exists in two variants. Read over a G chord the plain chord table gives <strong>G B D</strong> and the seventh table <strong>G B D F</strong>, the minor seventh replacing the root.</p>
+</div>
+
+<h3>The seventh tables walk the bass</h3>
+<div class="col">
+<p>The seventh bass table does something the plain one does not: near the end of the bar it walks upward toward the chord a fourth above. Over G7, the last four steps of each row:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Rhythm</th><th class="m">Plain bass</th><th class="m">Seventh bass</th></tr>
+  <tr><td>swing</td><td class="m">B . . .</td><td class="m hi">A . . . B</td></tr>
+  <tr><td>slow-rock</td><td class="m">G . D B</td><td class="m hi">G . A B</td></tr>
+  <tr><td>march</td><td class="m">D . B -</td><td class="m hi">A . B -</td></tr>
+  <tr><td>disco</td><td class="m">D - G -</td><td class="m hi">A - A&sharp; - B</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>G, A, B &mdash; a run at C, which is where a G7 wants to go, and the disco row takes it chromatically.</p>
+<p><strong>It does not look ahead.</strong> The walk is baked into the table and keyed only on the chord sounding <em>now</em>, so it anticipates a chord that may never arrive &mdash; which is exactly how the instrument behaves: sometimes it lands and sometimes it does not. It is also not on every rhythm. This was described from the ear of someone who owns the keyboard, before the tables were read, and the tables say precisely that.</p>
+</div>
+
+<h3>And its drums</h3>
+<div class="col">
+<p>The percussion table is separate, at <code>0x2BBC</code>, and laid out by <strong>bit-plane</strong>: <code>byte = 0x2BBC + plane*0x40 + bank*0x20 + step</code> (ROM <code>0x1274</code>). Five planes of 64 bytes, and the <em>bits</em> of each byte are the patterns &mdash; bit 7 the first, bit 0 the eighth &mdash; so assembling bit <em>b</em> of all five planes gives a <strong>5-bit strike mask</strong> for that step (<code>0x142F</code>). Bank 0 bits 7..0 carry the first eight rhythms, bank 1 bits 7 and 6 the last two, and <strong>bank 1 bits 5..0 are the six drum fills</strong> &mdash; the same six the corpus identified from the cards.</p>
+<p>A step is a sixteenth and a pattern is 32 steps, so <strong>every pattern is two bars</strong>; bit 7 of the step counter picks which (<code>0x0AB9</code>), which is how a pattern's second bar can differ from its first. The same three styles that use 12 of 16 slots in the pitched tables do so here, and four of the six fills are twelve-step for the same reason.</p>
+<p><strong>The drum sounds are not in the ROM.</strong> The mask is written straight to the sound chip at <code>0xE030</code> (<code>0x077C</code>); the voices live in the YM2142 itself. The ROM says only which to strike, and when.</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th class="m">Bit</th><th>Voice</th><th>How it identifies itself</th></tr>
+  <tr><td class="m">0</td><td class="hi">kick</td><td>four-on-the-floor in disco, beat 1 alone in waltz</td></tr>
+  <tr><td class="m">1</td><td class="hi">latin</td><td>plays the <strong>son clave</strong> in rhumba and bossa-nova; unused by seven styles</td></tr>
+  <tr><td class="m">2</td><td class="hi">snare</td><td>backbeat on 2 and 4 in rock; beats 2 and 3 in waltz</td></tr>
+  <tr><td class="m">3</td><td class="hi">cymbal, long</td><td>the open hi-hat &mdash; disco's off-beats</td></tr>
+  <tr><td class="m">4</td><td class="hi">cymbal, short</td><td>the closed hi-hat &mdash; rock's straight eighths</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>There is one cymbal on the chip, struck for a shorter or longer time, so bits 3 and 4 are two lengths rather than two instruments. Every one of those readings was predicted from the instrument before the table was decoded, including that the waltz is kick and cymbal on beat 1 with snare on beats 2 and 3 &mdash; which is exactly what the bits say.</p>
+<p><strong>The mark dispatch is known; which fill it names is not.</strong> A small Z80 interpreter run over the bar-mark handler at <code>0x2AEC</code> gives what each mark sets in <code>0x80CF</code>: marks 0 to 7 set bits 3, 2, 1, 0, 5, 4, 6 and 7 respectively. Bits 0&ndash;5 are the fill selector (<code>0x13F9</code> masks with <code>0x3F</code>); bit 7 is the alternate accompaniment pattern, as on the cartridge.</p>
+<p><strong>That is a storage indirection and nothing more.</strong> A table bit index is a slot, not a fill number, so &ldquo;mark 1 selects the pattern at bit 2&rdquo; says nothing about which fill is heard. An earlier version of this section concluded from that dispatch that the PCS-30's fills are marks 0&ndash;5 rather than 1&ndash;6; the inference was invalid and the claim is withdrawn.</p>
+<p>It is also impossible on its face. A card carries no notion of which instrument will read it, and one pressed in 1982 cannot anticipate a keyboard built in 1984, so the same mark must mean the same thing everywhere &mdash; and the fills do sound alike across Playcard keyboards. Any reading that makes one machine's mark numbering differ from another's is wrong somewhere.</p>
+<p>The card-reading path was the obvious suspect and is not the answer: at <code>0x0486</code> the opcode nibble goes into the buffer unmodified, and at <code>0x25D3</code> the escape sub-value comes back out unmodified. The value reaching the handler is the card's own.</p>
+<p>Applying that remap leaves nothing unexplained. <strong>Card mark 0 sets bit 6</strong>, which falls outside the fill mask and reaches <code>0x129F</code> &mdash; the routine that clears the pending drum strike at <code>0x8042</code>. That is the drum mute, in the same place the cartridge puts it. Card marks 1 to 6 select the six fills and card mark 7 sets bit 7, the alternate pattern. The two machines agree completely.</p>
+<p>Running a real card through the ROM confirms it end to end. I Write the Songs carries mark 0 on bars 1 to 4, a fill and a mute in bar 11, a fill in 12, and mark 0 again on 19, 20 and 21 &mdash; and feeding those marks through the handler at <code>0x2AEC</code>, latching the result and executing the bit-6 test with its call to <code>0x129F</code>, the drum strike is cleared on exactly those bars and survives on every other. That is the behaviour the card is documented to produce on the cartridge, reproduced by a different machine's code.</p>
+<p>An earlier version of this section reported mark 0 and mark 6 as swapped between the machines. That was the missing remap, not a real difference, and the claim is withdrawn.</p>
+</div>
+
+<h3>What the PCS-30 does with the chord chart</h3>
+<div class="col">
+<p>The converter is at <code>0x28BA</code>. It takes the chart value in the form the card stores it &mdash; <code>value + 1</code>, which is what the 6-bit field holds &mdash; masks off the low nibble, looks it up in a 16-byte table at <code>0x28E3</code>, and ORs the type nibble on top. The result goes to a staging byte at <code>0x8044</code>, which <code>0x1E60</code> copies to the live chord byte.</p>
+<p>That table is an <strong>independent confirmation of the note-code mapping</strong>, from a machine that shares no code with the cartridge:</p>
+</div>
+
+<pre>0F 01 02 03 <b>FF</b> 04 05 06 <b>FF</b> 07 08 09 <b>FF</b> 0A 0B 00</pre>
+
+<div class="col">
+<p>Indexed by <code>value + 1</code>, all <strong>12 of 12</strong> real note codes land on the right chromatic root &mdash; code 14 is C and gives root 0, code 0 is C&sharp; and gives root 1, and so on &mdash; and the chip's three unused codes 3, 7 and 11 all land on <code>0xFF</code>.</p>
+<p><code>0xFF</code> in that table does not mean &ldquo;mute&rdquo;. It means <strong>do not update the root</strong>, and the routine then ORs the new type nibble onto whatever chord was already sounding. So the two machines part company:</p>
+</div>
+
+<div class="tw">
+<table>
+  <tr><th>Chart value</th><th>UPA-01 cartridge</th><th>PCS-30</th></tr>
+  <tr><td><code>0xFF</code></td><td>accompaniment stops</td><td>root becomes <code>0x0F</code>, its own &ldquo;no chord&rdquo; value: accompaniment stops</td></tr>
+  <tr><td><code>0x13</code> <code>0x23</code> <code>0x33</code></td><td>accompaniment stops</td><td class="hi">keeps the root, applies the type</td></tr>
+</table>
+</div>
+
+<div class="col">
+<p>Executed rather than read, with <code>z80run.py</code> calling <code>0x28BA</code>: over a sounding G7, <code>0x23</code> gives back G7 unchanged, while <code>0x13</code> and <code>0x33</code> give Gm7. Over a C major they give Cm, C7 and Cm7.</p>
+<p>So <strong>a card carrying one of these plays differently on the two machines</strong>. On the cartridge all of them silence the accompaniment; on the PCS-30 they alter the chord's quality without moving its root, and because the type usually matches the chord already sounding (72% of the corpus's 47), most of them are no-ops there. Which behaviour the arranger meant is not something either ROM can say.</p>
+<p><strong>And the PCS-30 has no 62-entry ceiling.</strong> It keeps the chart as (value, position) byte pairs in a span with start and end pointers and no counter at all, so its limit is RAM rather than a table size. The ceiling is the cartridge's, and a card has to satisfy the tightest reader &mdash; which is exactly what the corpus does by stopping at 62.</p>
+</div>
+
+<div class="note">
+<b>What this does and does not settle</b>
+It gives a complete worked example of a Yamaha accompaniment generator built around this format, using the same rhythm numbering and the same chord-type encoding as the cards. It does <strong>not</strong> give the UPA-01's tables: that is a different machine with a different sound chip, and the cartridge's patterns are still unextracted. What the PCS-30 supplies is the shape to look for.
+</div>
+
+<h2>How this was verified</h2>
+<div class="col">
+<ol>
+<li><strong>The checksum.</strong> All 267 cards close with CRC = 0. A single misplaced bit anywhere in the parse would break it.</li>
+<li><strong>Style versus title.</strong> The rhythm field sorts songs into rhumba, samba, bossa-nova and waltz groups matching what the titles say they are. Summing decoded durations, 86% of waltzes come out as a whole number of 3/4 bars while every other style is majority-divisible by a 4/4 bar — and nothing in the duration decoding knows about the rhythm field.</li>
+<li><strong>Against the firmware itself.</strong> Feeding Jingle Bells to the real cartridge under emulation and capturing its YM2151 writes gives 194 melody notes and 234 obbligato notes. The static decoder reproduces <strong>every one of them, in order, from the first</strong> — similarity 1.000 on both parts.</li>
+</ol>
+<p>Plus ground truth by ear on Silent Night, Edelweiss, This Masquerade, Bill Bailey, When You Wish Upon a Star and others, and a transposition check across the whole corpus.</p>
+</div>
+
+<h2>The patents</h2>
+<div class="col">
+<p>Yamaha patented this machinery in pieces through the early 1980s, a separate application for each idea rather than one description of the system. <strong>None of it was used to decode the format.</strong> Everything on this page came from the ROM and the cards; the patents were read at the end, and only to see whether they agreed. Two of them turn out to describe mechanisms that had already been worked out the hard way &mdash; worth something as independent confirmation, and nothing at all as a shortcut.</p>
+</div>
+
+<table>
+  <tr><th>Patent</th><th class="m">Priority</th><th>What it is</th><th>Bearing</th></tr>
+  <tr><td><strong>4,406,203</strong></td><td class="m">Dec 1980</td><td>The <strong>&ldquo;01 coding method&rdquo;</strong>: a per-song table of note lengths, codeword length set by how often each is used, the decoder counting runs of like bits to the change</td><td class="hi">Confirms the duration track</td></tr>
+  <tr><td><strong>4,387,620</strong></td><td class="m">Nov 1980</td><td>Repeated passages as subroutines with calls and returns, and a <strong>detecting pass</strong> that catalogues their addresses before playback; nesting allowed</td><td class="hi">Confirms the repeat spans and the back-fill</td></tr>
+  <tr><td><strong>4,587,878</strong></td><td class="m">Jun 1981</td><td>Chord data as a <strong>name recorded once</strong> plus several <strong>timing records</strong> pointing at it</td><td class="hi">Confirms the chord chart's shape</td></tr>
+  <tr><td><strong>5,144,875</strong></td><td class="m">Nov 1981</td><td>The card itself: the strip carries &ldquo;a melody, an obbligato, a counter melody and a chord&rdquo;, and the printed rhythm names cymbals 1 and 2, snare and bass drum</td><td>Names the parts; no encoding</td></tr>
+  <tr><td>4,402,244</td><td class="m">Jun 1980</td><td>Tempo follow-up: a late key depression halts the accompaniment until the key arrives, an early one catches up</td><td>Corroborates free tempo, on another product</td></tr>
+  <tr><td>4,413,545</td><td class="m">Jul 1980</td><td>The idea of a strip on a music sheet</td><td>Nothing about the format</td></tr>
+  <tr><td>4,466,324</td><td class="m">Dec 1980</td><td>Panel override of recorded control data; 6-bit pitch and duration words</td><td>A different encoding</td></tr>
+  <tr><td>4,454,797</td><td class="m"></td><td>Practising between chosen measures; 8-bit tagged words</td><td>A different encoding</td></tr>
+  <tr><td>4,378,720</td><td class="m">Sep 1979</td><td>Key lighting; 8-bit words tagged <code>10</code> melody, <code>01</code> chord, <code>00</code> duration</td><td>Ancestor of the tagging idea</td></tr>
+</table>
+
+<h3>One claim in the family does not hold for these cards</h3>
+<div class="col">
+<p>4,406,203 says the pitch data of music not in C is <strong>stored transposed to C</strong>, with a key instruction put back at playback. That is a real feature of the device it describes and would explain the key field neatly. It is not what these cards do, and what they do instead is more interesting.</p>
+<p><strong>The melodies are written on the white keys, and the key field moves them.</strong> Counting black notes rather than guessing at scales &mdash; a tune with a flat seventh reads as its own subdominant and makes a best-fit test lie:</p>
+</div>
+
+<table>
+  <tr><th></th><th class="m">Cards</th><th class="m">Black keys as written</th><th class="m">As the machine plays it</th></tr>
+  <tr><td>key field asks for no shift</td><td class="m">156</td><td class="m">3.0%</td><td class="m">3.0%</td></tr>
+  <tr><td>key field asks for a shift</td><td class="m">105</td><td class="m hi">4.9%</td><td class="m hi">13.0%</td></tr>
+</table>
+
+<div class="col">
+<p>A card that is never transposed is 3.0% black keys and stays there. A card that IS transposed is just as easy on the hands as written and four times as hard once it sounds. <strong>Of the 94 cards moved by a fourth, 63 have a written melody under 5% black keys.</strong> That is not a storage convention normalising everything to C; it is somebody entering the tune in the key easiest to play and then telling the card where it really belongs. The chords are not moved with it and do not need to be — they are stored at <strong>sounding</strong> pitch already.</p>
+<h4>The cards are not all written in C</h4>
+<p>The white keys are a <strong>key signature</strong>, not a key, and the difference matters because it is easy to state this finding one step too strongly. The seven white notes are C major, but they are equally A minor, G mixolydian and D dorian; a melody that never touches a black note has told you what it cost to store and nothing about its tonic.</p>
+<p>Measuring the tonic needs a witness the key field does not touch, and there is exactly one: the chord chart, stored at <strong>sounding</strong> pitch. Songs cadence to the tonic, so the chart's last chord names the key the card sounds in — which agrees with the melody's own last note on <strong>211 of 261</strong> cards. Subtract the shift and the written key falls out.</p>
+</div>
+
+<table>
+  <tr><th>The melody as written</th><th class="m">Cards</th><th>The card is written in</th><th class="m">Cards</th></tr>
+  <tr><td>cheapest with no sharps or flats</td><td class="m">243</td><td>C</td><td class="m">203</td></tr>
+  <tr><td>needs a signature with one or more</td><td class="m">18</td><td>A minor</td><td class="m">36</td></tr>
+  <tr><td></td><td class="m"></td><td>G, A, D, D minor, F, E</td><td class="m">22</td></tr>
+</table>
+
+<div class="col">
+<p><strong>So &ldquo;written in C&rdquo; is right for 203 of the 261 and wrong for 58</strong>, and where it is wrong it can be wrong by a fourth. The rule is not C. The rule is <em>whatever is cheapest to write down</em>, which is nearly always the white keys and is a different statement. <span class="tag proven">measured</span></p>
+</div>
+
+<table>
+  <tr><th>Card</th><th class="m">Field</th><th>Written in</th><th>Sounds in</th><th>Naming the shift from C would say</th></tr>
+  <tr><td>PC-100 <em>9 to 5</em></td><td class="m">6 (+5)</td><td class="hi">G</td><td class="hi">C</td><td class="m">F</td></tr>
+  <tr><td>PCS-30 <em>Summertime</em></td><td class="m">9 (−5)</td><td class="hi">D minor</td><td class="hi">A minor</td><td class="m">G</td></tr>
+</table>
+
+<div class="col">
+<p><em>9 to 5</em> is a blues melody with a flat seventh: written in G it uses F♮ 29 times against F♯ 6, so it sits on the white keys while being in G and not in C. Shifted up a fourth it sounds in C, with that flat seventh now B♭ — which is what makes its &ldquo;as played&rdquo; black-note count 29 of 165 without its being in a black-key key at all. Its chart ends <code>Dm7 · G7 · F · C</code> and its melody ends on C. <em>Summertime</em> is written in D dorian, again with no accidental in the signature, and its chart ends <code>E7 · Am · D · Am</code> with the melody ending on A.</p>
+</div>
+
+<table>
+  <tr><th>Melody notes that are tones of the chord under them</th><th class="m">Cards</th><th class="m">As written</th><th class="m">As played</th></tr>
+  <tr><td>key field asks for no shift</td><td class="m">156</td><td class="m">74.0%</td><td class="m">74.0%</td></tr>
+  <tr><td>key field asks for a shift</td><td class="m">105</td><td class="m hi">37.2%</td><td class="m hi">70.3%</td></tr>
+</table>
+
+<div class="col">
+<p>Applying the shift takes the transposed cards from nonsense to very nearly the corpus average, and improves <strong>101 of the 105</strong>.</p>
+<p><strong>The PC-100 9 to 5 looks wrong and is not</strong>, and it is worth following the whole way, because the first answer to it was still half wrong. The complaint: the card <strong>sounds in C</strong> — anyone can hear that — while its key field is 6, a fourth up, which everything printed as &ldquo;F&rdquo;. The temptation is to call its 6-black-notes-in-165 melody C and conclude the machine plays it in F. It does not: the melody is written in <strong>G</strong>, and a fourth above G is C, which is what the listener hears, what the melody's last sounded note is, and what the chart says. Melody-against-chord agreement goes from 50% as written to 65% as played, the corpus norm, and the shift itself was confirmed against the firmware rather than argued: <code>csrc/playcard</code> gives a melody matching the shifted decode on <strong>165 of 165 notes</strong>, and the untransposed decode on none. The apparent contradiction was ours — <strong>we had assumed the melody was in C</strong>. <span class="tag proven">measured</span></p>
+</div>
+
+<h3>Why not simply write it in the right key? For eighteen cards, it would not fit</h3>
+<div class="col">
+<p>The obvious objection is that transposing the notes once, before they ever reached the strip, would have cost nothing and saved the confusion. It would not have cost nothing.</p>
+<p><strong>An accidental costs an opcode.</strong> A sharp is a modifier of its own preceding the note it alters, and a flat is spelled as the sharp of the letter below &mdash; so every black note in the stored stream is an extra opcode a white note does not need. A melody written on the white keys is smaller than the same melody written where it sounds, and the strip is 433 bytes with <strong>37 of the 267 cards within four bytes of the end</strong>.</p>
+<p>Compiling each transposed card both ways measures it: written where they sound, the 105 cost <strong>642 bytes</strong> more between them, a median of 6 each and up to 45. Compression recovers some &mdash; 92 extra accidentals on California Girls cost only 45 bytes &mdash; but the direction never reverses. Add that to each card's real size and <strong>eighteen no longer fit the strip at all</strong>.</p>
+</div>
+
+<table>
+  <tr><th>Card</th><th class="m">As pressed</th><th class="m">Written where it sounds</th></tr>
+  <tr><td>My Heart Belongs to Me</td><td class="m hi">433</td><td class="m">468</td></tr>
+  <tr><td>Summertime (PCS-30)</td><td class="m">431</td><td class="m">449</td></tr>
+  <tr><td>What Kind of Fool</td><td class="m">430</td><td class="m">447</td></tr>
+  <tr><td>Autumn in New York</td><td class="m">431</td><td class="m">445</td></tr>
+  <tr><td>Weekend in New England</td><td class="m">431</td><td class="m">444</td></tr>
+  <tr><td>Pennsylvania Polka</td><td class="m">429</td><td class="m">444</td></tr>
+  <tr><td>My Love</td><td class="m">425</td><td class="m">441</td></tr>
+  <tr><td>Symphony No. 40</td><td class="m">423</td><td class="m">440</td></tr>
+  <tr><td>California Girls</td><td class="m">395</td><td class="m">440</td></tr>
+  <tr><td colspan="3">and nine more besides</td></tr>
+</table>
+
+<div class="col">
+<p>My Heart Belongs to Me is <em>exactly</em> at the maximum as it stands; in its own key it would need 468 bytes onto a 433-byte strip. The practice is not laziness and not an accident of who was at the keyboard: on a full card it is the only way the song fits, and a field that already existed for transposing performances paid for it. It does not explain every one &mdash; the median card had 80 bytes to spare &mdash; but whoever set the house style had a reason, and it was a good one. <span class="tag proven">measured</span></p>
+</div>
+
+
+<h2>Superseded findings</h2>
+<div class="col">
+<p><strong>The statistics about the key field were wrong for two days; the tools never were.</strong> Worth separating carefully, because the first account of this said the opposite.</p>
+<p>The parser stores the key field as the ROM reads it at <code>0x62C4</code>: <strong>signed</strong>, so codes 9 to 15 come back as &minus;7 to &minus;1. <code>key_shift()</code> indexes a table by note code, so a negative value found nothing and returned no transposition. But every tool that converts a card &mdash; the MIDI exporter, the decompiler, the PCS-30 arranger, the swipe decoder &mdash; converts the field on the line above the call, and <strong>always did</strong>. Checked rather than assumed: the exporter on Jingle Bells, whose field is &minus;7, matches the firmware on <strong>194 of its 194 melody notes</strong>.</p>
+<p>What was wrong was the <em>analysis</em> scripts written to study the field, which passed the parsed value straight in and counted 50 transposed cards as untransposed. Every figure from them was wrong &mdash; 206 unshifted cards against the true 156, 55 shifted against 105 &mdash; and they are corrected above. The lesson is about measurement, not the format: <strong>a corpus round trip cannot catch a transposition error</strong>, because it decodes and recompiles with the same function and agrees with itself whatever that function does.</p>
+</div>
+<div class="col">
+<p>Recorded because the wrong turns are informative, and to stop them being re-derived.</p>
+<p><strong>The firmware has bugs, and one long-standing "finding" was one.</strong> The chord dropout was recorded here for weeks as an openMSX defect and is in fact the UPA-01's own &mdash; established by an emulator written from scratch, <code>csrc/playcard</code>, reproducing it independently.</p>
+<p><strong>The fill feel was a second one</strong>, and getting there took three passes and two wrong turns: first "1 and 2 are straight, 3 and 4 swing" as a property of the format, then &mdash; on finding the PCS-30 disagreed &mdash; a flat denial that any such split existed, then a corpus statistic that seemed to put the cartridge back in the right. What settled it was one card somebody had actually listened to on a PC-100. <strong>Two machines disagreeing is a question, not a verdict</strong>, a corpus statistic is a weaker witness than a played card, and where the answer is genuinely unknown the honest entry is "Still open" rather than a tidy story.</p>
+
+<p><strong>The "nearest note" octave rule was an invention, and wrong.</strong> For a long time octaves were computed by placing each note nearest the previous one. It approximates the truth about 88% of the time, which is exactly enough to look plausible and never be right. The cartridge uses a plain octave register.</p>
+
+<p><strong>The duration bit 7 was read wrongly twice.</strong> First as a rest, which silently swallowed notes; then as "ignore entirely", which produced spurious duplicates. It is a lift flag, tested on the <em>preceding</em> event. Three separate reported passages were needed to pin it down; no single one distinguishes the cases.</p>
+
+<p><strong>Opcode <code>0x11</code> was read as the alternate-pattern selector.</strong> The reasoning was that it is the first opcode on cards that begin on that pattern and recurs 6–10× per song, which looked like bar-by-bar selection. But it occurs on <em>every</em> card, 1,978 times across the corpus, while only five cards start on the alternate pattern — and those five have unremarkable <code>0x11</code> counts. A frequency that "looks about right" is not evidence when the control appears everywhere.</p>
+
+<p><strong>The escape opcode's sub-values were all read as drum fills.</strong> Value 7 is the one-bar alternate-accompaniment switch. The name "fill" came from the count being 8 and nothing more; it was never checked against a card whose accompaniment behaviour was known.</p>
+
+<p><strong>The key field's values were named as if they were keys.</strong> The field is numerically a YM2151 note code, and the note-code name was printed as the card's key — so field 0 came out as "C♯". It is a transposition, not a name: field 0 is no transposition at all and its cards sound in <strong>C</strong>. The note-code name sits a semitone above the key throughout, and the reading would have had 158 of the 267 cards published in C♯, which no one has ever done. The chord charts, stored at sounding pitch and untouched by this field, say C, F and G for fields 0, 6 and 9. A listener spotted it; nothing in the arithmetic was wrong, only the label on it.</p>
+
+<p><strong>The key field was a hand-built table of three values.</strong> Unlisted values silently defaulted to no transposition, leaving eleven cards in the wrong key. A lookup table with a silent default was the wrong shape for the problem; the note-code rule has no gaps.</p>
+
+<p><strong>"The playback engine is not in this cartridge" was based on a bad premise.</strong> The decoded track buffer's literal address appears once, which proves nothing — buffers are reached through pointer variables. Relatedly, the absence of a note-frequency table was taken as proof that pitch was resolved externally; the YM2151 takes key codes, not periods, so there is no such table to find.</p>
+
+<p><strong>The accompaniment-pattern bit was called "a starting state, not a lock".</strong> The ROM says otherwise: the header expands its field to 3, setting bit 1 of <code>0xD352</code>, and the once-per-bar revert returns early whenever bit 1 is set, so bit 0 can never be cleared.</p>
+
+<p><strong>And the reasoning behind that error is worth keeping.</strong> It rested on cards which begin on the alternate pattern and later change to the standard one, so something besides the header bit had to be able to move it. <em>The observation is correct; the inference from it was not.</em> When You Wish Upon a Star does exactly that — alternate for bars 1 and 2, standard from bar 3 — but its header field is <strong>0</strong>, and it gets there with a mark 7 on each of those bars, never engaging the lock. Two mechanisms produce the same opening effect and only one is permanent; seeing the temporary one says nothing about whether the other can be undone.</p>
+
+<p><strong>Chord notes vanishing mid-card was read as a format behaviour, and then as an emulator bug.</strong> It is neither: it is a bug in the UPA-01's own firmware, reproduced by an independent emulator, and it fires when the alternate pattern runs more than one bar on one chord. It affects original cards too and does not occur on real Playcard keyboards. Three cards were built and captured chasing it.</p>
+
+<p><strong>Capturing the FM chip looked like a complete solution.</strong> It produces melody, obbligato, chords, bass and drums — but chords drop notes, spurious drum hits appear, and the timing cannot be trusted. It is an excellent oracle and a poor converter.</p>
+
+<p><strong>The trailer was called a pressing date</strong> — on this page, in those words, until this revision. That the field is a date is settled: all 267 decode to real calendar days and the weekday skew is decisive. <em>Which</em> date is not. It may record when the card was physically made, or when its data was created, compiled or signed off, and nothing in the corpus separates those. The weekday evidence proves a working calendar, which every one of those candidates has. Naming the step was an inference the evidence never carried.</p>
+
+<p><strong>Modifier 2 was briefly concluded to have no effect on pitch.</strong> That fit was made while the repeat structure was still broken, and the structural error corrupted it. With correct structure, modifier 2 is octave down — the obvious reading, wrongly rejected.</p>
+
+<p><strong>An earlier expander's call/definition model was structurally right but could not know its targets.</strong> It desynchronised 237 of 261 cards. The cartridge's own back-fill pass, reproduced exactly, resolves all 261.</p>
+
+<p><strong>The unplayable-root chart entries were called a second spelling of the accompaniment mute.</strong> They do silence the UPA-01 &mdash; that part was measured on the real firmware and stands &mdash; but silence is that machine misreading them. The PCS-30's converter shows the convention: the root is the one already sounding and the type nibble is ORed on. The corpus agrees decisively: every change one of them makes adds a seventh, none moves the root, and not one of the 83 falls on a bar line while <code>0xFF</code> mutes cluster 6 to 12 ticks after a downbeat. Reading a behaviour off one machine and calling it the format was the error; the cards are older than that machine.</p>
+<p><strong>Obbligato voice 2 was guessed as piccolo.</strong> It is the flute (<code>FLUTE</code> on the SFG-01).</p>
+</div>
+
+<h2>Still open</h2>
+<div class="col">
+<ul>
+<li><strong>The UPA-01's own bass and drum patterns.</strong> The card selects and gates them but does not contain them; they live in the firmware's pattern tables. Everything the card contributes is now decoded — rhythm style, standard or alternate pattern, per-bar fills, and both mutes — so a capture can be attributed to a fully known selection, which is what the pattern tables have to reproduce. The <strong>PCS-30's</strong> equivalent tables are now fully decoded, which gives the shape to look for; the cartridge's are not those tables, but they are the best lead there has been.</li>
+<li><strong>Which PCS-30 fill each mark names.</strong> The dispatch is settled and so is the mute, but a table bit index is a storage slot rather than a fill number, so which of the six stored patterns is heard for a given mark is still only inferred &mdash; from metre, which puts the two four-beat fills on marks 1 and 2 and the four twelve-slot ones on marks 3 to 6, exactly as the corpus families predict.</li>
+<li><strong>What a &ldquo;same root&rdquo; chart entry is FOR.</strong> The convention is decoded, but 61 of the 83 change no harmony while still costing a chart position. A re-strike fits the placement; a cue to the player's hands fits the form; nothing measurable separates them. The PC-1000's Chord Lesson was weighed and the distribution refuses it &mdash; none of that machine's own cards uses one.</li>
+<li><strong>The flag at <code>0xD356</code></strong> in the strict sense. Free tempo itself is no longer a mystery &mdash; <code>F5</code> selects it, <code>0xD222</code> records it, and the cartridge holds its own sequencer at <code>0x5B46</code> until the player plays the note. But the flag is a different thing from the mode byte, and it is only ever <em>transmitted</em>. What the keyboard does with it, and what makes the tempo follow the player once they have started, are still downstream of this ROM.</li>
+<li><strong>The third ducked part</strong>, <code>0xD349</code>, moved in step with the obbligato's <code>0xD324</code> by both opcodes. No channel responds to it on the card captured so far. <strong>The PCS-30 cannot settle it:</strong> the two machines duck by different mechanisms — the cartridge writes a level into three per-part blocks of stride <code>0x25</code>, while the PCS-30 keeps one flag and uses it to pick a quieter entry from a level table at <code>0x2CFC</code>. There is no third block on that machine to name.</li>
+<li><strong>What the PC-100 does with a &ldquo;same root&rdquo; chart entry.</strong> The convention is decoded and the two machines that can be read disagree about it: the PCS-30 implements it, the cartridge does not and falls silent. But the 22 cards carrying one were pressed for neither &mdash; they date from 1982&ndash;85, against a 1984 keyboard and a 1985 cartridge &mdash; so the machine they were written for is the one that cannot be checked here.</li>
+<li><strong>A handful of notes.</strong> A few cards may still differ in detail; the corpus has been checked by ear but not exhaustively against the firmware.</li>
+</ul>
+</div>
+
+<footer>
+<p>Decoded from the UPA-01 cartridge ROM and the SFG-01, against a corpus of 267 card images. Verified by CRC on every card, by capturing the real firmware as it plays, and by ear against the real instrument. The working notes, the decoder, the MIDI exporter and the pair of tools that decompile a card to MIDI and compile it back live alongside this document as <code>playcard-format.md</code>, <code>HANDOFF.md</code> and the Python tools.</p>
+<p>The card images and the ROMs are Yamaha's and are not distributed with those tools; the tools read them from folders you supply. The seventeen cards written in 2026 <em>are</em> distributed — they were built from this document, so they are ours.</p>
+</footer>
+
+</div>
+

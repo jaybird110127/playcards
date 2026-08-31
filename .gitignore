@@ -1,0 +1,62 @@
+# Yamaha's material, not ours.  The tools in this repository describe and read
+# the Playcard format; the cards and the firmware themselves stay out of it.
+#
+# The code expects these two folders to exist locally.  Set PLAYCARD_CARDS or
+# PLAYCARD_ROMS if yours live somewhere else.
+
+Original Playcards/*
+!Original Playcards/README.md
+
+# Ignore what is IN Roms/, not the folder itself - git will not look inside an
+# ignored directory, so its README could never be un-ignored that way.
+Roms/*
+!Roms/README.md
+*.rom
+*.ROM
+
+# Card images, wherever they land.  The cards in new-cards/ and in
+# Sample Playcards/ are ours - written in 2026 from the spec - so they are
+# un-ignored below.
+*.bin
+!new-cards/*.bin
+!Sample Playcards/*.bin
+
+# Yamaha's accompaniment and drum patterns.  The patterns are the instrument's
+# musical content, not a fact about the file format, so they stay out - but the
+# code that reads them does not have to.  pcs30_extract.py rebuilds this file
+# from a PCS-30 ROM you own; everything else reads it and never sees the ROM.
+pcs30-tables.json
+patterns/
+examples/
+
+# Randomly generated test cards - ours, but there can be thousands of them.
+random-cards/
+
+# Anything derived from a card: decoded music, captures, buffer dumps.
+midi/
+pcs30-midi/
+rmidi/
+*.mid
+!Sample Playcards/*.mid
+*.fmlog
+*.marks
+*.watch
+*.wav
+fake_cr01_out.txt
+msx_screen.txt
+card_dates.txt
+
+# Python junk
+__pycache__/
+*.pyc
+
+# Claude settings
+.claude/settings.local.json
+
+# Temporary folder, anything might be placed here!
+tmp/
+
+# built binaries from csrc/
+csrc/*.exe
+csrc/playcard
+csrc/fmlog2wav

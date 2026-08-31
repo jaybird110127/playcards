@@ -1,0 +1,49 @@
+# How Git may and may not touch these files.
+#
+# Without this file Git guesses, file by file, whether something is text and
+# therefore whether to rewrite its line endings on checkout.  The guess is
+# usually right - it looks for a NUL byte in the first 8 KB - but "usually" is
+# not good enough here.  This repository's whole point is byte-exact card
+# images: a single CR inserted into one would break its CRC-16, the card would
+# stop working, and the round trip would fail for whoever cloned it, with no
+# obvious cause.  So the binaries are named explicitly.
+
+# Text: stored with LF in the repository AND checked out with LF everywhere.
+#
+# `text=auto` alone would store LF and hand Windows CRLF, which is the usual
+# arrangement and is harmless to every tool here - but it means a clone is not
+# byte-identical to the repository, so checksums taken on one machine do not
+# match another.  In a project where the whole discipline is byte-exactness,
+# and where the maker scripts are supposed to reproduce their output exactly,
+# that is a trap.  `eol=lf` gives every platform the same bytes.
+#
+# Nothing here minds: Python, C, Make and Git Bash all read LF natively on
+# Windows, and so does every editor written this century.
+* text=auto eol=lf
+
+# Card images and everything else that is bytes rather than characters.
+# -text means: never convert, never diff as text, never merge as text.
+*.bin       -text
+*.mid       -text
+*.wav       -text
+*.fmlog     -text
+*.rom       -text
+*.ROM       -text
+*.jpg       -text
+*.jpeg      -text
+*.png       -text
+*.gif       -text
+*.exe       -text
+*.zip       -text
+
+# Things that must keep LF even in a Windows working tree, because the tools
+# that read them do not tolerate CR.
+Makefile        text eol=lf
+*.mk            text eol=lf
+*.sh            text eol=lf
+*.tcl           text eol=lf
+
+# Let GitHub count the language properly: the vendored cores are not ours.
+csrc/z80.c      linguist-vendored
+csrc/z80.h      linguist-vendored
+csrc/ymfm/**    linguist-vendored

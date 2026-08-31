@@ -1,0 +1,82 @@
+"""Self-test z80run against hand-computed results before trusting it on a ROM."""
+import sys
+sys.path.insert(0, 'X:/playcards')
+import z80run
+
+ok = fail = 0
+
+
+def check(name, got, want):
+    global ok, fail
+    if got == want:
+        ok += 1
+    else:
+        fail += 1
+        print('  FAIL %-38s got %r want %r' % (name, got, want))
+
+
+def run(code, setup=None, stop=None):
+    cpu = z80run.Z80(bytes(code), base=0x1000)
+    if setup:
+        setup(cpu)
+    cpu.call(0x1000, stop=stop)
+    return cpu
+
+
+# LD A,n / arithmetic / flags
+c = run([0x3E, 0x05, 0xC6, 0x03, 0xC9])                       # LD A,5 / ADD A,3 / RET
+check('ADD', c.reg['A'], 8)
+c = run([0x3E, 0x05, 0xD6, 0x07, 0xC9])                       # SUB 7 -> wraps, carry
+check('SUB wrap', c.reg['A'], 0xFE)
+check('SUB carry', c.reg['F'] & 1, 1)
+c = run([0x3E, 0x0F, 0xE6, 0x3C, 0xC9])                       # AND 0x3C
+check('AND', c.reg['A'], 0x0C)
+
+# CP sets Z correctly, and JP Z is taken
+c = run([0x3E, 0x04, 0xFE, 0x04, 0xCA, 0x0B, 0x10, 0x3E, 0xFF, 0xC9,
+         0x00, 0x3E, 0x42, 0xC9])
+check('CP/JP Z taken', c.reg['A'], 0x42)
+c = run([0x3E, 0x04, 0xFE, 0x05, 0xCA, 0x0B, 0x10, 0x3E, 0xFF, 0xC9,
+         0x00, 0x3E, 0x42, 0xC9])
+check('CP/JP Z not taken', c.reg['A'], 0xFF)
+
+# JP NZ
+c = run([0x3E, 0x01, 0xB7, 0xC2, 0x09, 0x10, 0x3E, 0x11, 0xC9, 0x3E, 0x22, 0xC9])
+check('OR A / JP NZ', c.reg['A'], 0x22)
+
+# CB: SET / RES / BIT on (HL)
+c = run([0x21, 0x00, 0x90, 0xCB, 0xDE, 0xCB, 0xC6, 0xC9])     # SET 3,(HL) / SET 0,(HL)
+check('SET bits', c.peek(0x9000), 0x09)
+c = run([0x21, 0x00, 0x90, 0x36, 0xFF, 0xCB, 0x9E, 0xC9])     # LD (HL),0xFF / RES 3,(HL)
+check('RES bit', c.peek(0x9000), 0xF7)
+
+# SRL / rotate
+c = run([0x3E, 0x80, 0xCB, 0x3F, 0xC9])                       # SRL A
+check('SRL', c.reg['A'], 0x40)
+c = run([0x3E, 0x81, 0x0F, 0xC9])                             # RRCA
+check('RRCA', c.reg['A'], 0xC0)
+
+# 16-bit: LD HL,nn / ADD HL,DE / LD (nn),HL
+c = run([0x21, 0x00, 0x20, 0x11, 0x34, 0x00, 0x19, 0x22, 0x00, 0x90, 0xC9])
+check('ADD HL,DE', c.peek16(0x9000), 0x2034)
+
+# DJNZ loop: add B times
+c = run([0x06, 0x05, 0x3E, 0x00, 0x3C, 0x10, 0xFD, 0xC9])     # LD B,5 / INC A x5
+check('DJNZ', c.reg['A'], 5)
+
+# CALL / RET and the stack
+c = run([0xCD, 0x08, 0x10, 0x3C, 0xC9, 0x00, 0x00, 0x00, 0x3E, 0x10, 0xC9])
+check('CALL/RET', c.reg['A'], 0x11)
+
+# EX (SP),HL - the "return a value on the stack" idiom this ROM uses.
+# PUSH BC(=0x1234), LD HL,0x5678, EX (SP),HL  ->  HL=0x1234, top of stack=0x5678
+c = run([0x01, 0x34, 0x12, 0xC5, 0x21, 0x78, 0x56, 0xE3, 0xC1, 0xC9])
+check('EX (SP),HL -> HL', (c.reg['H'] << 8) | c.reg['L'], 0x1234)
+check('EX (SP),HL -> stack', (c.reg['B'] << 8) | c.reg['C'], 0x5678)
+
+# PUSH/POP
+c = run([0x21, 0x78, 0x56, 0xE5, 0xC1, 0xC9])                 # PUSH HL / POP BC
+check('PUSH/POP', (c.reg['B'] << 8) | c.reg['C'], 0x5678)
+
+print('z80run self-test: %d passed, %d failed' % (ok, fail))
+sys.exit(1 if fail else 0)
