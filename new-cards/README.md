@@ -159,10 +159,12 @@ never from `KC`, which says "minor triad" on every chord ever pressed. And chord
 minor and minor seventh, which the spec had only inferred from progressions making harmonic sense,
 are now confirmed directly.
 
-**Absolute timing in a capture means nothing.** The two cards report different bar lengths despite
-carrying the same tempo, and the emulator's own tempo control rewrites emulated time in a way that
-is invisible afterwards. Everything above is built on the mark events, which are timestamped by the
-same clock as the register writes, so the comparison holds regardless.
+**Absolute timing in these captures meant nothing.** They were made under openMSX, the two cards
+reported different bar lengths despite carrying the same tempo, and that emulator's own tempo
+control rewrites emulated time in a way that is invisible afterwards. Everything above is built on
+the mark events, which are timestamped by the same clock as the register writes, so the comparison
+held regardless. A capture from `../csrc/playcard` made today keeps time to within a few tenths of
+a percent; one made before 2026-09-21 ran 4% slow.
 
 ## Cards 05 to 08: the header pattern bit is a lock
 
@@ -258,8 +260,8 @@ the obbligato**. Breakpointing the `0xE7` handler at `0x5FC6` and playing it on 
 
 **One entry, one chord change, at the obbligato's position.** The melody's copy never reaches the
 handler. Read from the cartridge's own handler rather than the audio, so the chord-dropout bug
-cannot touch it, and it is a local comparison, so the emulator's unreliable absolute timing cannot
-either.
+cannot touch it, and it is a local comparison, so it survived even the 4% timing fault the emulator
+had until 2026-09-21.
 
 One trap this card taught, worth repeating: the first version gave its durations no **lift** flag,
 so every run of equal pitches tied into one held note and the melody sounded twice a bar instead of
@@ -440,8 +442,11 @@ What the cards did *not* settle is what the UPA-01 does with them. `diff_fill_fe
 plays both and prints the drum onsets, and the cartridge plainly treats the two
 rhythms differently — the steady bars carry different patterns, and 501 onsets
 against 425. But putting a fill's onsets on a bar grid needs a bar grid, and that
-script does not yet get one: the card asks 100 bpm and the capture folds best at
-95, with the phase wandering between runs. Its UPA-01 numbers are raw and no
+script did not get one for a long time: the card asks 100 bpm and the capture
+folded best at 95, with the phase wandering between runs. **That was the emulator,
+not the cartridge** — a fault that lost a timer tick every quarter second and ran
+every capture 4% slow, fixed on 2026-09-21 — and the capture now folds at 99.9
+and 100.0 bpm. Its UPA-01 numbers are still raw and no
 verdict is drawn from them. A firmer anchor than one melody note — the
 accompaniment's own downbeat — would fix it.
 

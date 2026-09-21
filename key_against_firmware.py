@@ -33,7 +33,7 @@ NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 def firmware_melody(card):
     log = os.path.join(SC, 'kv.fmlog')
     r = subprocess.run([os.path.join(ROOT, 'csrc', 'playcard.exe'), card,
-                        '-o', log, '--quiet'], capture_output=True, cwd=ROOT)
+                        '-o', log, '--quiet', '--mix', 'cartridge'], capture_output=True, cwd=ROOT)
     if not os.path.isfile(log):
         return []
     kc, ev = {}, []

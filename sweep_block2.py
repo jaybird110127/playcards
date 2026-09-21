@@ -52,7 +52,7 @@ watchfile = os.path.join(tmp, 'sweep.watch')
 
 
 def run(path):
-    cmd = [EXE, path, '--watch-out', watchfile]
+    cmd = [EXE, path, '--watch-out', watchfile, '--mix', 'cartridge']
     for w in WATCH:
         cmd += ['--watch', w]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)

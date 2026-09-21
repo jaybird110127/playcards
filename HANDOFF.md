@@ -397,7 +397,7 @@ desynchronise`, which looks like a pass.
 | `new-cards/make_swing_fill_test.py` | Builds cards 15 and 16, one field apart (rock and swing), for asking whether a fill's feel is its own or the rhythm's. `diff_fill_feel.py` beside it plays both through `csrc/playcard` and prints them against the PCS-30's tables |
 | `make_test_midi.py` | A four-channel MIDI written from scratch, for testing `midi_compile.py` on material that did not come off a card. `--form short` folds onto one side, `--form long` needs two, `--sections` sets how long, `--seed` changes the material. **The long form overflows the 62-entry chord chart at the same point it goes two-sided** — 8 sections already needs 64 — because it writes a chord a bar and has little for the compressor to fold. That is one of the two limits it exists to reach, but it means the default long card is not the music that went in; `--chord-bars 2` thins the chords and 11 sections then fits both halves whole. The corpus round trip cannot test quantising real note starts, an alphabet with no precedent, repeats nobody planted, or either of the two limits — this can |
 | `msx_player.py` | An emulated CX5M in Python, no emulator installed: boots the BIOS, initialises both cartridges and the SFG, reads a card through the cartridge's own UI (F1), starts the player (F2) and captures every YM2151 write to an `.fmlog`. Needs `cx5m_basic-bios1.rom` and `SFG01.ROM` in `Roms/`. Its docstring holds the three things that have to be right before a note will sound |
-| `csrc/` | The C twin, and now the only way to see the cartridge's PSG-only mode (`--no-fm`, `--psg-log`): `playcard` runs a card on an emulated CX5M at ~150x real time and captures the FM, `fmlog2wav` renders that capture to a `.wav` through ymfm's YM2151. `--watch ADDR --watch-out F` reports every read and write of up to eight RAM addresses with the PC that did it, which is how a question like “does anything ever look at this byte” gets answered. `--screen F --screen-at S` writes the cartridge's own settings panel as text, read out of the emulated VRAM — the last thing openMSX was needed for. **The tempo is correct here** and half speed under openMSX, because this one delivers the YM2151's timer-A interrupt. Borrows a Z80 core (MIT) and ymfm (BSD-3); see its README |
+| `csrc/` | The C twin, and now the only way to see the cartridge's PSG-only mode (`--no-fm`, `--psg-log`): `playcard` runs a card on an emulated CX5M at ~150x real time and captures the FM, `fmlog2wav` renders that capture to a `.wav` through ymfm's YM2151. `--watch ADDR --watch-out F` reports every read and write of up to eight RAM addresses with the PC that did it, which is how a question like “does anything ever look at this byte” gets answered. `--screen F --screen-at S` writes the cartridge's own settings panel as text, read out of the emulated VRAM — the last thing openMSX was needed for. `--mix`, `--volume`, `--tempo` and `--transpose` set the cartridge's panel as a player would, through the firmware's own sync routine; `--keys`/`--play-keys` type anything else at it. **The tempo is correct here** and half speed under openMSX, because this one delivers the YM2151's timer-A interrupt. Borrows a Z80 core (MIT) and ymfm (BSD-3); see its README |
 | `card_limits.py` | Runs the cartridge's own parser over a card and says whether the firmware would take it, reporting its return code (`0` one-sided, `1` a side A, `2` a side B, `0x80` refused). Cards given together go into ONE reader in order, which is how a two-sided pair has to be checked. `--sweep` finds the size ceiling from scratch |
 | `same_root_entries.py` | Walks every card in playback order and reports the unplayable-root chart entries: which cards use them, what each does to the sounding chord, where in the bar it sits and how long it stands. Name a card and it prints that card's whole chart with the entries marked. This is the evidence for that section of `playcard-format.md` |
 | `check_wrong_file.py` | Throws nine kinds of wrong file — MIDI, WAV, PDF, HTML, an executable, random bytes, an empty file, a folder, a path that does not exist — at every tool that takes one, and fails if any of them does other than name the file, name what it looks like, name what was wanted, and exit 1. Run it after touching how anything opens a file |
@@ -880,6 +880,40 @@ says so first, and every pitch in every report is spelled `F1` rather than `29` 
 moved notes between parts on a pitch guess would be worse than one that misses a mark. Say what
 happened and let the author fix the file.
 
+## The cartridge's panel, and a tempo fault that ran every capture 4% slow
+
+**The panel is a small block of RAM.** V, T and K on the MSX keyboard write the *wanted* value at
+`0xCC26`: five volumes (melody, obbligato, chord, bass, rhythm; 0-40, booting at 30), tempo (an index
+into 41 settings, 40-200 bpm in 4s, ROM `0x433A`) and transpose (0-11, 5 is none). A routine that runs
+a few hundred times a second copies each into the live copy at `0xCC09` when they differ and applies
+it. So poking `0xCC26` is exactly as good as typing — which is what `csrc/playcard`'s options do. Two
+catches, both handled there: starting a card overwrites the tempo at `0x4313`, so tempo goes in just
+after that store; and the sync only acts when wanted and live DIFFER, so asking for the boot default
+does nothing unless the live copy is marked stale. **A** cycles ABC off/on/variation at `0xCC08`,
+which changes nothing in the cartridge's own output — it is sent to the music keyboard. The volume,
+tempo and transpose knobs are sprites, which is why `--screen` never showed them.
+
+**At the cartridge's own levels the melody is quiet**: measured alone and while sounding, melody and
+obbligato sit about 9 dB under the bass and drums and 6 dB under the chords, and each volume step is
+1.1 dB. `--mix lead` (40/34/28/26/26) brings it forward, and is `csrc/playcard`'s **default** since
+2026-09-21. `--mix karaoke` is lead with the melody muted: volume 0 is not silence (the carrier TL
+only goes to `0x4F`, about 45 dB down), so key-ons on channels 0 and 1 - always the melody, doubled,
+on all 23 cards checked - are turned into key-offs. `--mix cartridge` imposes nothing at all, and
+**every research harness passes it** (`key_against_firmware.py`, `sweep_block2.py`,
+`new-cards/capture_fills.py`, `diff_fill_feel.py`, `dropout_trigger.py`), so their captures stay
+the machine untouched. Anything new that studies the firmware should do the same.
+
+**Every capture from `csrc/playcard` before 2026-09-21 ran about 4% slow.** The playback loop runs the
+machine in quarter-second slices, and `run()` kept timer A's next overflow in a local variable, so
+each slice started the timer period afresh and lost a tick — exactly one every 250 ms, found by
+tracing the SFG's interrupt handler at `0x2D4C`. The phase now lives in the machine, the handler
+services 95.772 interrupts a second against 95.771 programmed, and tempos land within the timer's
+own resolution. It explains the old "folds best at 95" in `diff_fill_feel.py`, the stray half-bars in
+`dropout_trigger.py`'s first table, and the spec's 120.4 bpm, which is really 119.7.
+
+**The UPA-01 plays five card tempos slow**: it turns the card's metronome mark into a panel index as
+`floor(bpm/4) - 10`, so 63, 66, 69, 126 and 138 play at 60, 64, 68, 124 and 136. Measured.
+
 ## The three things most likely to be wrong again
 
 The duration byte's **bit 7** has been misread twice and is the subtlest part of the format. It is
@@ -972,11 +1006,13 @@ That is the remaining work. Notes toward it:
   types 0–3 being major, minor, seventh, minor seventh. So a capture can now be checked against the
   chord the card asked for, bar by bar — which is what makes the pattern tables tractable.
 - Capturing the FM chip *does* produce chords, bass and drums — imperfectly (chords drop notes,
-  spurious drum hits, wrong tempo) but enough to work out what the patterns are. **Do not trust
-  capture timing**: it has never been characterised on a run known to be undisturbed, and the
-  emulator's own tempo control silently rewrites it (see the trap above). Build the bar grid from
-  the drum channels, whose pattern repeats once per bar, rather than from the header's bpm or from
-  elapsed time. The bass channel
+  spurious drum hits) but enough to work out what the patterns are. **Capture timing from
+  `csrc/playcard` can now be trusted** to within the YM2151 timer's own resolution, a few tenths of
+  a percent: characterised on 2026-09-21 across the whole tempo range. Before that date every
+  capture it made ran 4% slow — its playback loop restarted timer A's count every quarter second
+  and lost a tick each time — and openMSX captures were worse, since its own tempo control rewrites
+  emulated time (see the trap above). So distrust any *old* number taken from elapsed time; for new
+  work the header's bpm, through the cartridge's grid of 4 (`floor(bpm/4)*4`), is what plays. The bass channel
   gives reliable chord roots. **Chord quality is readable after all, but never from the key codes**
   — see the trap below.
 - A good first experiment: hand-build a minimal card that selects one rhythm and holds one chord,

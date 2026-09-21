@@ -20,10 +20,12 @@ feel, and which fill it is has nothing to do with it.
 **Not settled: what the UPA-01 does with them.**  The two cards below differ in
 one field, and the cartridge plainly treats them differently - the steady bars
 carry different patterns and different numbers of onsets.  But pinning a fill's
-onsets onto a bar grid needs a bar grid, and this script does not yet get one
-reliably: the card asks for 100 bpm, the capture folds best at about 95, and the
-phase wanders between captures.  The numbers it prints for the UPA-01 side are
-therefore RAW, and no verdict is drawn from them.
+onsets onto a bar grid needs a bar grid, and for a long time this script could
+not get one: the card asks for 100 bpm and the capture folded best at about 95,
+with the phase wandering between captures.  That was the EMULATOR - it lost a
+timer tick every quarter second until 2026-09-21 - and the capture now folds at
+99.9 and 100.0 bpm.  The numbers it prints for the UPA-01 side are still RAW,
+and no verdict has yet been drawn from them.
 
 Getting that right needs a firmer anchor than a single melody note - the
 accompaniment's own downbeat would do it - and until it exists the fill question
@@ -75,7 +77,7 @@ def capture(card):
     log = os.path.join(HERE, os.path.splitext(card)[0] + '.fmlog')
     subprocess.check_call([PLAYCARD, os.path.join(HERE, card),
                            '-o', log, '--seconds', '60', '--quiet',
-                           '--roms', P.ROM_DIR])
+                           '--roms', P.ROM_DIR, '--mix', 'cartridge'])
     drums, melody = [], None
     for line in open(log):
         p = line.split()

@@ -119,6 +119,15 @@ It will also show you the cartridge's own front panel &mdash; the voices, rhythm
 csrc/playcard mycard.bin -o card.fmlog --screen panel.txt --screen-at 5
 ```
 
+And it will set that panel for you &mdash; the five part volumes, the tempo and a transpose of the whole arrangement &mdash; exactly as a player would from the keyboard:
+
+```bash
+csrc/playcard mycard.bin -o card.fmlog --mix karaoke
+csrc/playcard mycard.bin -o card.fmlog --volume melody=40,rhythm=24 --tempo +8 --transpose -2
+```
+
+Left to itself the cartridge plays the melody about 9 dB under the bass and drums, so by default `csrc/playcard` uses a mix of its own, `lead`, that brings the melody to the front. `--mix karaoke` is the same with no melody at all, and `--mix cartridge` leaves the panel as the UPA-01 sets it. [csrc/README.md](csrc/README.md) has the details, including what each key on the real panel does.
+
 A 90-second card goes from image to audio in about two seconds. Neither program understands the Playcard format &mdash; Yamaha's own firmware does the decoding, so what comes out is what the machine does rather than what we think it does.
 
 This needs three ROM images. See [Roms/README.md](Roms/README.md).

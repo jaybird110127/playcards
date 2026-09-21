@@ -61,6 +61,126 @@ Neither program understands the Playcard format. That is the point: the card is
 decoded by Yamaha's own firmware, exactly as a keyboard would decode it, so the
 result is what the machine does rather than what we think it does.
 
+## Setting the cartridge's panel: volume, tempo, transpose
+
+The cartridge has its own front panel, driven from the MSX keyboard while a card
+plays. Nothing on it is on the card; it is the player's mixing desk. Set it from
+the command line and the firmware applies it exactly as if you had typed:
+
+```bash
+./playcard card.bin -o card.fmlog --mix karaoke
+./playcard card.bin -o card.fmlog --volume melody=40,rhythm=24
+./playcard card.bin -o card.fmlog --tempo 132            # absolute, in bpm
+./playcard card.bin -o card.fmlog --tempo -8             # the card's own, 8 slower
+./playcard card.bin -o card.fmlog --transpose +2
+```
+
+| option | what it sets | range | the cartridge starts at |
+|---|---|---|---|
+| `--mix NAME` | all five at once: `lead`, `karaoke` or `cartridge` (below) | | this program's default is `lead` |
+| `--volume P=N` | one part's level: `melody`, `obbligato`, `chord`, `bass`, `rhythm`, or `all` | 0 to 40 | 30 |
+| `--tempo BPM` | the tempo, on the cartridge's grid of 4; a leading `+` or `-` moves the card's own instead | 40 to 200 | the card's |
+| `--transpose S` | the whole arrangement, melody to bass; the drums are untouched | −5 to +6 | 0 |
+
+The three mixes:
+
+* **`lead`**, the default: 40, 34, 28, 26, 26 - the melody on top and the
+  accompaniment balanced beneath it. Why, below.
+* **`karaoke`**: `lead` with the melody gone, to sing or play along with.
+  Volume 0 is not silence on this cartridge - the melody's carrier only drops
+  to about 45 dB down, faint but there in a quiet passage - so the melody's
+  notes are cut as well. The cartridge always plays the melody on FM channels
+  0 and 1, doubled, and nothing else there (checked on 23 cards across every
+  series); a key-on on those two becomes a key-off, so the capture has the same
+  writes and fewer key-ons. The obbligato stays, as a second line.
+* **`cartridge`**: the UPA-01's own 30 across the board, by touching nothing -
+  the panel is left exactly as the firmware sets it. Use it whenever the
+  question is what the machine does; every research script in this repository
+  passes it.
+
+`--volume` after `--mix` adjusts one part of it. The line the program prints
+says what it imposed:
+
+```
+  panel: melody 40 obbligato 34 chord 28 bass 26 rhythm 26
+```
+
+### What the keys on the real panel do
+
+For anyone at a real CX5M, which cannot say any of this aloud:
+
+* **V** steps through the five volumes: melody, obbligato, chord, bass, rhythm,
+  and round again. The arrows move the selected one. It wraps at both ends: one
+  step up from 40 is 0.
+* **T** selects the tempo, and the arrows move it 4 bpm at a time, wrapping
+  from 200 to 40.
+* **K** selects the transpose, one semitone a press, from −5 to +6, wrapping.
+* **A** cycles the ABC setting, *off*, *on* and *variation*, and it is the one
+  setting the panel shows as words. It changes **nothing** in the cartridge's
+  own sound: forty seconds of a card captured in each of the three states are
+  identical write for write. The value is read by the routine that sends the
+  cartridge's settings out to the music keyboard, so what it controls is the
+  keyboard's Auto Bass Chord - the left hand choosing the chords - which is not
+  emulated here.
+
+The levels, the tempo and the transpose are drawn as **sprites** sliding along
+bars, which is why a text dump of the screen (`--screen`) shows the bars but
+never the knobs.
+
+### Why the lead mix exists
+
+Measured each part alone, level while it sounds, at the cartridge's own 30
+across the board: **the melody and obbligato sit about 9 dB under the bass and
+drums, and 6 dB under the chords.** On Lady Madonna the melody is 9.3 dB under
+the loudest accompaniment part; on 9 to 5, 11.8. Each volume step is 1.1 dB.
+
+`lead` brings the melody to the front and the rhythm section back:
+
+| card | melody | obbligato | chord | bass | rhythm |
+|---|---:|---:|---:|---:|---:|
+| Lady Madonna | **+6.6** | −0.3 | −0.7 | −0.2 | 0.0 |
+| Edelweiss | **+9.2** | +4.2 | 0.0 | −4.7 | −5.1 |
+| 9 to 5 | **+1.8** | +2.1 | 0.0 | −5.1 | −4.0 |
+
+dB against the loudest accompaniment part. **No fixed mix suits every card**,
+because each card picks its own voices and some pairings are lopsided - 9 to 5
+sets a piano melody against a brass obbligato, and the piano only just gets
+ahead. That is what `--volume` after `--mix` is for.
+
+So `lead` is the default, for listening. A capture meant as evidence of what
+the machine does should ask for `--mix cartridge`.
+
+### How it works
+
+The keys write the wanted value into a block at `0xCC26`: five volumes, then
+tempo, then transpose. A routine that runs a few hundred times a second compares
+each with the live copy at `0xCC09` and, where they differ, applies it through
+the firmware's own path - the chip's levels, the tempo timer, the sprite on the
+panel. Writing the wanted block is therefore as good as typing, and instant, and
+it happens before the first note.
+
+Two things needed care. **Starting a card overwrites the tempo** with the card's
+own, at `0x4313`, so a tempo is imposed just after that store. And **the sync
+applies a value only when wanted and live differ**, so asking for what the live
+copy already holds - 120 bpm is the boot default - would change nothing and let
+the card's tempo stand; each imposed setting is marked stale so the firmware
+re-applies it.
+
+### Typing at it directly
+
+For anything else on the panel there is a key script, typed before playback
+(`--keys`) or just after the start key (`--play-keys`):
+
+```bash
+./playcard card.bin -o card.fmlog --play-keys "wait:1,a,wait:0.3,screen:panel.txt"
+```
+
+Tokens are separated by commas: a key name taps it once (`v`, `right`, `f3`),
+`right*5` taps it five times, `wait:0.5` lets the machine run, `screen:F` writes
+the panel as text, and `ram:F` and `vram:F` write 16 KB snapshots for diffing.
+Give it a second after the start key before typing; presses in the first moments
+are lost.
+
 ## Speed
 
 About **150× real time**: 24 emulated seconds of machine in 0.16 s of wall
@@ -71,12 +191,47 @@ for volume.
 
 ## The tempo is right here, and is not under an emulator
 
-A card declaring 120 bpm renders at **120.4 bpm** from this program, and at half
-that under openMSX. The difference is the YM2151's **timer A**, which the SFG
-programs at 109.24 Hz and which clocks the music. Deliver that interrupt and the
-firmware plays at the speed it says; leave it out and only the VDP's 50 Hz drives
-the sequencer, at half speed and unevenly. See "playback ticks" in
+A card declaring 120 bpm renders at **119.7 bpm** from this program, and at half
+that under openMSX. The difference is the YM2151's **timer A**, which clocks
+the music: the cartridge programs it from the tempo, and the sequencer advances a
+card tick every one, two or four overflows, whichever keeps the timer in range.
+Deliver that interrupt and the firmware plays
+at the speed it says; leave it out and only the VDP's 50 Hz drives the
+sequencer, at half speed and unevenly. See "playback ticks" in
 `../playcard-format.md`.
+
+The 0.3% that remains is the chip's, not this program's: timer A counts in whole
+steps of 64 clocks, so for 120 bpm the nearest the cartridge can ask for is
+95.771 Hz, which is 119.7 bpm. Every tempo lands within that resolution of what
+it asks for, from 39.9 at the bottom to 199.8 at the top.
+
+**Until 2026-09-21 every capture here ran about four percent slow**, and the
+spec used to quote 120.4 bpm on a figure taken before the fault crept in. The
+playback loop runs the machine a quarter of a second at a time, and each call
+restarted timer A's count from nothing, throwing away whatever part of a period
+had already gone by: four overflows lost a second, which a trace of the SFG's
+interrupt handler showed as a missed tick exactly every 250 ms. The next
+overflow is now kept with the machine, the handler services 95.772 interrupts a
+second against the 95.771 programmed, and every gap between them is exactly one
+period. Anything measured from a capture's absolute timing before that date - a
+bar length, a tempo, a bar grid - is 4% out.
+
+**Five of the format's 32 tempos are not playable on this cartridge.** A card's
+metronome mark reaches the panel as `floor(bpm / 4) - 10`, an index into 41
+settings from 40 to 200 bpm in steps of 4 (ROM `0x4305` and the tables at
+`0x4363` and `0x433A`), so a mark that is not a multiple of 4 is rounded down:
+
+| the card says | this cartridge plays |
+|---:|---:|
+| 63 | 60 |
+| 66 | 64 |
+| 69 | 68 |
+| 126 | 124 |
+| 138 | 136 |
+
+Measured, not inferred: Lesson 1a, Somewhere My Love, Ebb Tide and Night and Day
+play at 59.9, 67.8, 124.0 and 135.5. This is the UPA-01's own behaviour, not the
+format's.
 
 ## What is emulated, and what is not
 

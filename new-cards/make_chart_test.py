@@ -26,8 +26,8 @@ handler at ROM 0x5FC6, value OR 0x80 as a dirty flag) answers it outright:
     G arrives at both               -> both fire, and a card gets two changes
 
 The melody's first note of each bar is G and the rest are C, so the bar grid can
-be read straight off the key-ons in the same log - a local comparison that
-survives the emulator's unreliable absolute timing.
+be read straight off the key-ons in the same log - a local comparison, which
+survived even the 4% timing fault the emulator had until 2026-09-21.
 """
 
 import os

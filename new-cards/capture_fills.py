@@ -11,9 +11,10 @@ Two files come out beside the card:
                      DECIDED, each with the PC that made it
 
 Both are timestamped by the same emulated clock, which is what makes them
-comparable.  Absolute timing in a capture is not trustworthy on its own - see
-the trap in HANDOFF.md - so a finding should rest on one stream against the
-other rather than on elapsed seconds.
+comparable.  Absolute timing is good too, now - within a few tenths of a
+percent - but was 4% slow before 2026-09-21 (see "The tempo is right here" in
+../csrc/README.md), so a finding that rests on one stream against the other
+is still the stronger kind.
 
 THE THREE BYTES, and why they are the ones to read
 
@@ -67,7 +68,7 @@ def capture(card, seconds):
     stem = os.path.join(HERE, os.path.splitext(os.path.basename(card))[0])
     fmlog, marks = stem + '.fmlog', stem + '.marks'
     cmd = [exe, card, '-o', fmlog, '--watch-out', marks,
-           '--seconds', str(seconds), '--roms', P.ROM_DIR, '--quiet']
+           '--seconds', str(seconds), '--roms', P.ROM_DIR, '--quiet', '--mix', 'cartridge']
     for a in WATCH:
         cmd[6:6] = ['--watch', a]
     P.say('capturing up to %d emulated seconds of %s'

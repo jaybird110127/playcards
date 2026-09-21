@@ -223,6 +223,13 @@ the ROM routine at `0x6248`.
 | 5 | *N* | Alphabet size, rejected if ≥ 26 |
 | 5×*N* | Alphabet | *N* indices into the 32-symbol master table |
 
+**The UPA-01 cannot play five of those 32 tempos.** It hands the card's metronome mark to its own
+panel as `floor(bpm / 4) − 10` (ROM `0x4305`, through the table at `0x4363`), an index into the
+panel's 41 settings from 40 to 200 bpm in steps of 4 (`0x433A`). A mark that is not a multiple of 4
+is rounded down: **63 plays at 60, 66 at 64, 69 at 68, 126 at 124 and 138 at 136.** Measured on the
+cartridge, not inferred: Lesson 1a, Somewhere My Love, Ebb Tide and Night and Day come out at 59.9,
+67.8, 124.0 and 135.5 bpm. The card carries the exact mark; this machine is the one that loses it.
+
 ### The voice tables
 
 Both fields index the SFG-01's 48-voice bank, whose names sit at `0x1B0D` in that ROM in 48-byte
@@ -1250,7 +1257,8 @@ obbligato arrives at the same index.
 
 This is read from the cartridge's own handler rather than from the audio, so the chord-dropout
 bug described above cannot affect it, and it is a *local* comparison — a record against the
-note beside it — which survives the emulator's unreliable absolute timing.
+note beside it — which would survive a capture whose absolute timing was off, as every capture
+from `csrc/playcard` was, by 4%, until the timer fault in "Playback ticks" was found.
 
 The PCS-30 agrees structurally, which is the second reason to believe it: that machine keeps the
 chord chart as its **own span**, with its own start and end pointers, and never merges it into
@@ -1650,15 +1658,29 @@ programmed to a fixed rate regardless of the video standard is the **YM2151's ow
 also the chip the cartridge already drives.
 
 **And it is now demonstrated, not just measured.** An emulated CX5M that delivers timer A's
-interrupt plays a 120 bpm card at **120.4 bpm**; the same machine driven only by a 50 Hz VDP plays it
+interrupt plays a 120 bpm card at **119.7 bpm**; the same machine driven only by a 50 Hz VDP plays it
 at half that. So the timer is the clock, and half tempo under an emulator means the OPM's interrupt
 is not reaching the firmware. `csrc/playcard.c` is the demonstration.
+
+This paragraph used to say 120.4, on a figure taken before a fault crept into that program. From
+then until 2026-09-21 **every capture it made ran about 4% slow**: its playback loop runs the machine
+a quarter of a second at a time, and each call restarted timer A's count from nothing, throwing
+away the part of a period already elapsed. A trace of the SFG's interrupt handler showed the missed
+tick exactly every 250 ms. With the timer's phase kept across calls the handler services 95.772
+interrupts a second against 95.771 programmed, and every tempo lands within the chip's own
+resolution of what the cartridge asks for — 39.9 bpm for 40, 99.9 for 100, 199.8 for 200.
 
 **The timer values, measured rather than deduced.** Running the machine in Python (`msx_player.py`) and
 watching what the SFG programs, the FM module starts **both** OPM timers with their interrupts
 enabled — register `0x14` = `0x3F` — and loads timer A with `CLKA` = 512, which at the chip's
-3.579545 MHz clock is a period of 9.154 ms: **109.24 Hz**. That is the clock the music was written
-for, and it is within 10% of the 100 a second the tempo arithmetic implies.
+3.579545 MHz clock is a period of 9.154 ms: **109.24 Hz**. That is where the SFG leaves it, and it is
+within 10% of the 100 a second the tempo arithmetic implies.
+
+**Then the cartridge sets the timer from the tempo**, once a card starts and again whenever the
+panel's tempo moves. For 120 bpm it loads `CLKA` = 440, 95.771 Hz, and the sequencer takes one card
+tick every two overflows: 47.9 ticks a second, 119.7 bpm. The divider changes with the tempo to keep
+the timer in range — one overflow a tick at 140 bpm, four at 40 — and the residue of a few tenths of
+a percent is the timer counting in whole steps of 64 clocks.
 
 The practical consequence is for captures: under an emulator the sequencer gets only the VDP's
 ticks, so **anything timed in seconds off a capture is at half speed**. Ratios measured within one

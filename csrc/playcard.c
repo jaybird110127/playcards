@@ -73,6 +73,29 @@
 #define CR01_BIT      0x68B2
 #define CR01_BIT_RET  0x68B5
 
+/* The cartridge's panel settings.  The keys (V and the arrows, T, K) write the
+ * WANTED value into a block at 0xCC26, and a routine that runs a few hundred
+ * times a second compares each one with the live copy at 0xCC09 and, where
+ * they differ, applies it through the firmware's own path - the chip, the
+ * sequencer's timer, the sprite on the panel.  Writing the wanted block is
+ * therefore exactly as good as typing, and instant:
+ *
+ *     0xCC26..2A   volume: melody, obbligato, chord, bass, rhythm    0-40, 30
+ *     0xCC2B       tempo: an index into the 41 marks at ROM 0x433A,
+ *                  40 to 200 bpm in steps of 4                        0-40
+ *     0xCC2C       transpose: 0-11, where 5 is none                   5
+ *
+ * The one catch is tempo.  Starting a card overwrites 0xCC2B with the card's
+ * own - the store at 0x4313, from its metronome mark via floor(bpm/4) - 10
+ * and the table at 0x4363 - so a tempo has to be imposed AFTER that store,
+ * which is what CARD_TEMPO_SET is for. */
+#define PANEL_WANT     0xCC26
+#define PANEL_LIVE     0xCC09          /* the applied copy, same order */
+#define PANEL_TEMPO    (PANEL_WANT + 5)
+#define PANEL_TRANS    (PANEL_WANT + 6)
+#define NPANEL         7
+#define CARD_TEMPO_SET 0x4316          /* just after the card's tempo lands */
+
 static const char *ROM_BIOS = "cx5m_basic-bios1.rom";
 static const char *ROM_SFG  = "SFG01.ROM";
 static const char *ROM_CART = "Play Card System (UPA-01) (1985) (Yamaha) (J).rom";
@@ -120,6 +143,14 @@ typedef struct {
     uint8_t opmreg;
     int opm_status, clka, clkb, t_load, t_irqen;
 
+    /* When the next frame and the next timer-A overflow fall due, in CPU
+     * cycles.  These belong to the MACHINE, not to one call of run(): the
+     * playback loop runs the machine a quarter of a second at a time, and
+     * restarting the timer at every call threw away the part of a period
+     * already elapsed - four ticks a second, which played every card four
+     * percent slow.  0 means not yet scheduled. */
+    unsigned long vnext, anext;
+
     char *bits;                    /* the cards, as '0'/'1', end to end */
     long nbits, bitpos;
     long swipe_end;                /* where the card now under the head ends */
@@ -135,6 +166,10 @@ typedef struct {
     int nwatch;
     memtouch *touch;
     long ntouch, touchmax;
+
+    int want[NPANEL];              /* panel settings to impose, or -1 */
+    int tempo_rel, tempo_delta;    /* or move the card's own tempo, in steps */
+    int mute_melody;               /* --mix karaoke: no key-on on channels 0-1 */
 
     unsigned long *pchist;         /* one count an address, or NULL */
     unsigned long pcfrom;          /* not before this cycle */
@@ -230,6 +265,13 @@ static void wr(void *ud, uint16_t a, uint8_t v)
                 m->cap = (fmwrite *)realloc(m->cap, m->capmax * sizeof *m->cap);
             }
             m->cap[m->ncap].cyc = m->cpu.cyc;
+            /* Karaoke.  Volume 0 is not silence - the carrier is still only
+             * about 45 dB down - so the melody's notes are cut outright.  The
+             * cartridge always plays the melody on channels 0 and 1, doubled
+             * (checked on 23 cards across every series), and nothing else;
+             * a key-on there becomes a key-off, so the write stays in the log. */
+            if (m->mute_melody && m->opmreg == 0x08 && (v & 7) < 2)
+                v &= 7;
             m->cap[m->ncap].reg = m->opmreg;
             m->cap[m->ncap].val = v;
             m->ncap++;
@@ -396,10 +438,46 @@ static int machine_init(msx *m, const char *romdir, int with_fm)
     return 1;
 }
 
+static void poke(msx *m, uint16_t a, uint8_t v)
+{
+    m->mem[a] = v;
+    m->ram[a] = v;
+}
+
+/* Put the requested panel settings into the wanted block; the cartridge's own
+ * sync routine does the rest.  Tempo is left alone here unless asked for, and
+ * a relative tempo is only meaningful once the card has set its own. */
+static void impose_panel(msx *m, int with_tempo)
+{
+    int i;
+    for (i = 0; i < NPANEL; i++) {
+        if (i == 5 && !with_tempo)
+            continue;
+        if (m->want[i] >= 0)
+            poke(m, (uint16_t)(PANEL_WANT + i), (uint8_t)m->want[i]);
+    }
+    if (with_tempo && m->tempo_rel) {
+        int t = m->mem[PANEL_TEMPO] + m->tempo_delta;
+        poke(m, PANEL_TEMPO, (uint8_t)(t < 0 ? 0 : t > 40 ? 40 : t));
+    }
+    /* The sync routine applies a setting only when wanted and live DIFFER.
+     * Asking for the value the live copy already holds - 120 bpm, say, which
+     * is the boot default - would therefore change nothing, and the card's
+     * own tempo would stand.  So mark each imposed live value stale, and the
+     * firmware re-applies all of them on its next pass. */
+    for (i = 0; i < NPANEL; i++) {
+        int asked = m->want[i] >= 0 || (i == 5 && m->tempo_rel);
+        if (asked && (i != 5 || with_tempo))
+            poke(m, (uint16_t)(PANEL_LIVE + i), 0xFF);
+    }
+}
+
 static void feed(msx *m)
 {
     if (m->page[1] != SLOT_CART)
         return;
+    if (m->cpu.pc == CARD_TEMPO_SET)
+        impose_panel(m, 1);
     if (m->cpu.pc == CR01_POLL) {
         m->cpu.a = (m->bitpos < m->swipe_end) ? 0x80 : 0x00;
         m->cpu.pc = CR01_POLL_RET;
@@ -487,8 +565,10 @@ static void run(msx *m, double seconds, double vdp_hz)
 {
     unsigned long end = m->cpu.cyc + (unsigned long)(seconds * CLOCK);
     unsigned long vstep = (unsigned long)(CLOCK / vdp_hz);
-    unsigned long vnext = m->cpu.cyc + vstep;
-    unsigned long anext = 0, aper = 0;
+    unsigned long aper = 0;
+
+    if (!m->vnext)
+        m->vnext = m->cpu.cyc + vstep;
 
     while (m->cpu.cyc < end) {
         feed(m);
@@ -501,24 +581,24 @@ static void run(msx *m, double seconds, double vdp_hz)
             m->pchist[m->cpu.pc]++;
         }
 
-        if (m->cpu.cyc >= vnext) {
-            vnext += vstep;
+        if (m->cpu.cyc >= m->vnext) {
+            m->vnext += vstep;
             m->vdp_flag = 1;
             z80_gen_int(&m->cpu, 0xFF);
         }
 
         aper = timer_a_period(m);
         if (aper && (m->t_load & 1)) {
-            if (!anext) anext = m->cpu.cyc + aper;
-            if (m->cpu.cyc >= anext) {
-                anext += aper;
+            if (!m->anext) m->anext = m->cpu.cyc + aper;
+            if (m->cpu.cyc >= m->anext) {
+                m->anext += aper;
                 m->opm_status |= 1;
                 publish_status(m);
                 if (m->t_irqen & 1)
                     z80_gen_int(&m->cpu, 0xFF);
             }
         } else {
-            anext = 0;
+            m->anext = 0;
         }
     }
 }
@@ -529,12 +609,215 @@ static void key(msx *m, int row, int mask, int down)
     else      m->keys[row] |= (uint8_t)mask;
 }
 
+
 #define F1_ROW 6
 #define F1_BIT 0x20
 #define F2_ROW 6
 #define F2_BIT 0x40
 #define F5_ROW 7                   /* F5 starts the card in free tempo */
 #define F5_BIT 0x02
+
+/* ---------------------------------------------------------------- key scripts
+ *
+ * The cartridge's panel is driven from the MSX keyboard - V picks a volume,
+ * the arrows move it, T and K set tempo and transpose, A the accompaniment -
+ * so the way to set it is to type at it.  A script is a list of tokens,
+ * separated by commas or spaces:
+ *
+ *     v            tap one key
+ *     right*3      tap it three times
+ *     wait:0.5     let the machine run half a second
+ *     screen:F     write the panel, as text, to F
+ *
+ * Keys are the standard MSX matrix.  A tap holds the key long enough for the
+ * cartridge's 256-a-second scanner to see it once and no more. */
+static const struct { const char *name; int row, mask; } KEYMAP[] = {
+    {"0",0,0x01},{"1",0,0x02},{"2",0,0x04},{"3",0,0x08},{"4",0,0x10},
+    {"5",0,0x20},{"6",0,0x40},{"7",0,0x80},{"8",1,0x01},{"9",1,0x02},
+    {"minus",1,0x04},
+    {"a",2,0x40},{"b",2,0x80},{"c",3,0x01},{"d",3,0x02},{"e",3,0x04},
+    {"f",3,0x08},{"g",3,0x10},{"h",3,0x20},{"i",3,0x40},{"j",3,0x80},
+    {"k",4,0x01},{"l",4,0x02},{"m",4,0x04},{"n",4,0x08},{"o",4,0x10},
+    {"p",4,0x20},{"q",4,0x40},{"r",4,0x80},{"s",5,0x01},{"t",5,0x02},
+    {"u",5,0x04},{"v",5,0x08},{"w",5,0x10},{"x",5,0x20},{"y",5,0x40},
+    {"z",5,0x80},
+    {"shift",6,0x01},{"ctrl",6,0x02},{"graph",6,0x04},{"caps",6,0x08},
+    {"code",6,0x10},{"f1",6,0x20},{"f2",6,0x40},{"f3",6,0x80},
+    {"f4",7,0x01},{"f5",7,0x02},{"esc",7,0x04},{"tab",7,0x08},
+    {"stop",7,0x10},{"bs",7,0x20},{"select",7,0x40},{"return",7,0x80},
+    {"space",8,0x01},{"home",8,0x02},{"ins",8,0x04},{"del",8,0x08},
+    {"left",8,0x10},{"up",8,0x20},{"down",8,0x40},{"right",8,0x80},
+};
+#define KEY_HOLD 0.08
+#define KEY_GAP  0.12
+
+/* Run a key script (see KEYMAP above).  Returns 0 on a token it does not
+ * understand, having said which. */
+static int run_keys(msx *m, const char *script, double vdp_hz, int quiet)
+{
+    char buf[4096], *tok;
+    size_t n = strlen(script);
+    if (n >= sizeof buf) {
+        fprintf(stderr, "playcard: key script too long\n");
+        return 0;
+    }
+    memcpy(buf, script, n + 1);
+    for (tok = strtok(buf, ", \t"); tok; tok = strtok(NULL, ", \t")) {
+        char name[32];
+        int times = 1, i, k, found = -1;
+        char *star;
+        if (!strncmp(tok, "wait:", 5)) {
+            run(m, atof(tok + 5), vdp_hz);
+            continue;
+        }
+        if (!strncmp(tok, "screen:", 7)) {
+            if (!dump_screen(m, tok + 7, m->cpu.cyc / CLOCK)) {
+                fprintf(stderr, "playcard: cannot write %s\n", tok + 7);
+                return 0;
+            }
+            if (!quiet)
+                printf("  screen -> %s\n", tok + 7);
+            continue;
+        }
+        if (!strncmp(tok, "ram:", 4) || !strncmp(tok, "vram:", 5)) {
+            /* A snapshot for diffing: 0xC000-0xFFFF, or all 16K of VRAM. */
+            int is_v = tok[0] == 'v';
+            const char *path = tok + (is_v ? 5 : 4);
+            FILE *f = fopen(path, "wb");
+            if (!f) {
+                fprintf(stderr, "playcard: cannot write %s\n", path);
+                return 0;
+            }
+            fwrite(is_v ? m->vram : m->mem + 0xC000, 1, 0x4000, f);
+            fclose(f);
+            continue;
+        }
+        star = strchr(tok, '*');
+        if (star) {
+            times = atoi(star + 1);
+            *star = 0;
+        }
+        for (i = 0; tok[i] && i < (int)sizeof name - 1; i++)
+            name[i] = (char)((tok[i] >= 'A' && tok[i] <= 'Z') ? tok[i] + 32 : tok[i]);
+        name[i] = 0;
+        for (k = 0; k < (int)(sizeof KEYMAP / sizeof KEYMAP[0]); k++)
+            if (!strcmp(KEYMAP[k].name, name)) { found = k; break; }
+        if (found < 0) {
+            fprintf(stderr, "playcard: unknown key \"%s\" in key script\n", tok);
+            return 0;
+        }
+        for (i = 0; i < times; i++) {
+            key(m, KEYMAP[found].row, KEYMAP[found].mask, 1);
+            run(m, KEY_HOLD, vdp_hz);
+            key(m, KEYMAP[found].row, KEYMAP[found].mask, 0);
+            run(m, KEY_GAP, vdp_hz);
+        }
+    }
+    return 1;
+}
+
+
+/* --volume melody=36,rhythm=24   (all= sets the five at once) */
+static const char *PANEL_PART[5] = {"melody", "obbligato", "chord", "bass", "rhythm"};
+
+static int parse_volume(const char *spec, int *want)
+{
+    char buf[256], *tok;
+    size_t n = strlen(spec);
+    if (n >= sizeof buf)
+        return 0;
+    memcpy(buf, spec, n + 1);
+    for (tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {
+        char *eq = strchr(tok, '=');
+        int v, k, hit = 0;
+        if (!eq)
+            goto bad;
+        *eq = 0;
+        v = atoi(eq + 1);
+        if (v < 0 || v > 40) {
+            fprintf(stderr, "playcard: a volume is 0 to 40, not %d\n", v);
+            return 0;
+        }
+        for (k = 0; k < 5; k++) {
+            if (!strcmp(tok, "all") || !strcmp(tok, PANEL_PART[k])
+                || (k == 4 && !strcmp(tok, "drums"))) {
+                want[k] = v;
+                hit = 1;
+            }
+        }
+        if (!hit)
+            goto bad;
+    }
+    return 1;
+bad:
+    fprintf(stderr, "playcard: --volume wants PART=N, with PART one of melody,\n"
+            "obbligato, chord, bass, rhythm or all, and N 0 to 40\n");
+    return 0;
+}
+
+/* --tempo 120 is absolute; --tempo +8 or -8 moves the card's own.  Either way
+ * in bpm, landing on the cartridge's grid of 4. */
+/* --mix NAME: a whole set of volumes at once.  Measured on real cards, each
+ * part alone, level while it sounds: at the cartridge's own 30-across-the-
+ * board the melody and obbligato sit about 9 dB under the bass and drums and
+ * 6 dB under the chords, and each volume step is 1.1 dB.  "lead" brings the
+ * melody to the front and the rhythm section back.  No fixed mix suits every
+ * card, because each card picks its own voices and some pairings are lopsided
+ * - on 9 to 5 a piano melody against a brass obbligato only draws level - so
+ * this is a starting point, and a --volume after it adjusts one part.  "lead"
+ * is the default, for listening; anything that studies what the machine does
+ * asks for "cartridge". */
+static const struct { const char *name; int v[5]; } MIXES[] = {
+    /* The UPA-01's own 30 across the board - by leaving the panel alone
+     * altogether, so that the capture is the machine untouched. */
+    {"cartridge", {-1, -1, -1, -1, -1}},
+    {"lead",      {40, 34, 28, 26, 26}},  /* the default */
+    {"karaoke",   { 0, 34, 28, 26, 26}},  /* lead with no melody */
+};
+
+static int parse_mix(const char *name, int *want, int *mute_melody)
+{
+    int k, i;
+    for (k = 0; k < (int)(sizeof MIXES / sizeof MIXES[0]); k++) {
+        if (!strcmp(name, MIXES[k].name)) {
+            for (i = 0; i < 5; i++)
+                want[i] = MIXES[k].v[i];
+            *mute_melody = !strcmp(name, "karaoke");
+            return 1;
+        }
+    }
+    fprintf(stderr, "playcard: --mix is lead, karaoke or cartridge\n");
+    return 0;
+}
+
+static int parse_tempo(const char *arg, int *want, int *rel, int *delta)
+{
+    double v = atof(arg);
+    if (arg[0] == '+' || arg[0] == '-') {
+        *rel = 1;
+        *delta = (int)(v / 4.0 + (v < 0 ? -0.5 : 0.5));
+        return 1;
+    }
+    if (v < 40 || v > 200) {
+        fprintf(stderr, "playcard: the cartridge's tempo runs from 40 to 200 bpm; "
+                "give +N or -N to move the card's own instead\n");
+        return 0;
+    }
+    want[5] = (int)((v - 40.0) / 4.0 + 0.5);
+    return 1;
+}
+
+static int parse_transpose(const char *arg, int *want)
+{
+    int s = atoi(arg);
+    if (s < -5 || s > 6) {
+        fprintf(stderr, "playcard: the cartridge transposes from -5 to +6 "
+                "semitones, not %d\n", s);
+        return 0;
+    }
+    want[6] = s + 5;
+    return 1;
+}
 
 int main(int argc, char **argv)
 {
@@ -546,6 +829,9 @@ int main(int argc, char **argv)
     double pcfrom = -1.0, ramat = 0.5;
     const char *ramout = NULL;
     const char *screenout = NULL;
+    const char *keys_before = NULL, *keys_after = NULL;
+    int want[NPANEL] = {-1, -1, -1, -1, -1, -1, -1};
+    int tempo_rel = 0, tempo_delta = 0, mute_melody = 0;
     double screenat = -1.0;        /* < 0 means "when the card ends" */
     const char *psgout = NULL;
     const char *watchout = NULL;
@@ -577,6 +863,7 @@ int main(int argc, char **argv)
             if (pf) { fclose(pf); romdir = "../Roms"; }
         }
     }
+    parse_mix("lead", want, &mute_melody);       /* the default mix; see MIXES */
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
         else if (!strcmp(argv[i], "--seconds") && i + 1 < argc) seconds = atof(argv[++i]);
@@ -592,6 +879,20 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--ram-at") && i + 1 < argc) ramat = atof(argv[++i]);
         else if (!strcmp(argv[i], "--screen") && i + 1 < argc) screenout = argv[++i];
         else if (!strcmp(argv[i], "--screen-at") && i + 1 < argc) screenat = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--keys") && i + 1 < argc) keys_before = argv[++i];
+        else if (!strcmp(argv[i], "--mix") && i + 1 < argc) {
+            if (!parse_mix(argv[++i], want, &mute_melody)) return 2;
+        }
+        else if (!strcmp(argv[i], "--volume") && i + 1 < argc) {
+            if (!parse_volume(argv[++i], want)) return 2;
+        }
+        else if (!strcmp(argv[i], "--tempo") && i + 1 < argc) {
+            if (!parse_tempo(argv[++i], want, &tempo_rel, &tempo_delta)) return 2;
+        }
+        else if (!strcmp(argv[i], "--transpose") && i + 1 < argc) {
+            if (!parse_transpose(argv[++i], want)) return 2;
+        }
+        else if (!strcmp(argv[i], "--play-keys") && i + 1 < argc) keys_after = argv[++i];
         else if (!strcmp(argv[i], "--psg-log") && i + 1 < argc) psgout = argv[++i];
         else if (!strcmp(argv[i], "--watch") && i + 1 < argc) {
             if (nwatch == MAXWATCH) {
@@ -620,6 +921,16 @@ int main(int argc, char **argv)
                 "   --quiet         no progress output\n"
                 "   --screen F      write the cartridge's screen, as text, to F\n"
                 "   --screen-at S   dump it S seconds after playback starts\n"
+                "   --mix NAME      lead (the default: melody on top, the accompaniment\n"
+                "                   beneath it), karaoke (lead with no melody), or\n"
+                "                   cartridge (the UPA-01's own 30s, panel untouched)\n"
+                "   --volume P=N    melody, obbligato, chord, bass, rhythm or all: 0-40,\n"
+                "                   on top of --mix; each step is about 1.1 dB\n"
+                "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
+                "                   the card's own tempo instead\n"
+                "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
+                "   --keys SCRIPT   type at the panel before playback: v,right*3,wait:1,screen:F\n"
+                "   --play-keys S   the same, just after the start key\n"
                 "   two card files  a two-sided set, side A first: one swipe "
                 "each\n"
                 "   --no-fm         no FM cartridge; the UPA-01 uses the PSG\n"
@@ -639,6 +950,16 @@ int main(int argc, char **argv)
             "   --roms DIR      where the ROM images are\n"
             "   --screen F      write the cartridge's screen, as text, to F\n"
             "   --screen-at S   dump it S seconds after playback starts\n"
+            "   --mix NAME      lead (the default: melody on top, the accompaniment\n"
+            "                   beneath it), karaoke (lead with no melody), or\n"
+            "                   cartridge (the UPA-01's own 30s, panel untouched)\n"
+            "   --volume P=N    melody, obbligato, chord, bass, rhythm or all: 0-40,\n"
+            "                   on top of --mix; each step is about 1.1 dB\n"
+            "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
+            "                   the card's own tempo instead\n"
+            "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
+            "   --keys SCRIPT   type at the panel before playback: v,right*3,wait:1,screen:F\n"
+            "   --play-keys S   the same, just after the start key\n"
             "   --quiet         no progress output\n"
             "   two card files  a two-sided set, side A first: one swipe each\n"
             "   --no-fm         no FM cartridge; the UPA-01 uses the PSG\n"
@@ -651,6 +972,10 @@ int main(int argc, char **argv)
 
     m = (msx *)malloc(sizeof *m);
     if (!machine_init(m, romdir, with_fm)) return 1;
+    memcpy(m->want, want, sizeof want);
+    m->tempo_rel = tempo_rel;
+    m->mute_melody = mute_melody;
+    m->tempo_delta = tempo_delta;
 
     for (i = 0; i < nwatch; i++)
         m->watch[i] = watch[i];
@@ -724,7 +1049,38 @@ int main(int argc, char **argv)
         int srow = free_tempo ? F5_ROW : F2_ROW;
         int sbit = free_tempo ? F5_BIT : F2_BIT;
 
+        impose_panel(m, 0);
+        if (!quiet) {
+            static const char *nm[NPANEL] = {"melody", "obbligato", "chord",
+                                             "bass", "rhythm", "tempo", "transpose"};
+            int any = 0;
+            for (k = 0; k < NPANEL; k++) {
+                if (m->want[k] < 0)
+                    continue;
+                if (!any++)
+                    printf("  panel:");
+                if (k < 5)
+                    printf(" %s %d", nm[k], m->want[k]);
+                else if (k == 5)
+                    printf(" tempo %d bpm", 40 + 4 * m->want[k]);
+                else
+                    printf(" transpose %+d", m->want[k] - 5);
+            }
+            if (m->tempo_rel)
+                printf("%s tempo %+d bpm on the card's own", any++ ? "" : "  panel:",
+                       4 * m->tempo_delta);
+            if (m->mute_melody)
+                printf("%s melody muted (karaoke)", any++ ? "," : "  panel:");
+            if (any)
+                printf("\n");
+        }
+        if (keys_before && !run_keys(m, keys_before, vdp_hz, quiet))
+            return 1;
+
         key(m, srow, sbit, 1); run(m, 0.1, vdp_hz); key(m, srow, sbit, 0);
+
+        if (keys_after && !run_keys(m, keys_after, vdp_hz, quiet))
+            return 1;
 
         if (screenout && screenat >= 0.0) {
             /* The panel is only refreshed when playback starts, so a dump

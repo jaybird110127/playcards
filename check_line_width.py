@@ -38,6 +38,8 @@ WAV = os.path.join(SC, 'r.wav')
 
 def make_broken():
     """Cards damaged in several different places, to reach several failures."""
+    if not os.path.isdir(SC):          # it used to rely on check_wrong_file.py
+        os.makedirs(SC)                # having made this; a fresh clone had not
     out = []
     good = open(CARD, 'rb').read()
     rng = random.Random(7)

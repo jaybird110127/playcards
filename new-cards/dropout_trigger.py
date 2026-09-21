@@ -51,15 +51,19 @@ def build(f3=0, mark=None, mark_bar=5, restate=None, restate_bar=9):
     """One card: a held chord, optionally one bar mark, optionally a later
     chart record.  `restate` is the chord value to state at `restate_bar`."""
     mel = [('note', 14)] + [('rest', None)] * (BARS - 1)
-    obb, index_of_bar = [], {}
+    obb, position_of_bar, pos = [], {}, 0
     for bar in range(1, BARS + 1):
         if bar == mark_bar and mark is not None:
             obb.append(('mark', mark))
+            pos += 2          # an escape costs two 4-bit reads, and chart
+                              # positions count reads: see nibble_positions()
+                              # in ../midi_compile.py
         obb.append(('rest', None))
-        index_of_bar[bar] = len(obb)               # 1-based opcode index
+        pos += 1
+        position_of_bar[bar] = pos
     chart = [(C_MAJOR, 1)]
     if restate is not None:
-        chart.append((restate, index_of_bar[restate_bar]))
+        chart.append((restate, position_of_bar[restate_bar]))
     return E.Card(tempo=15, rhythm=4, f3=f3, mel_voice=6, sustain=0,
                   obb_voice=1, key=0, alphabet=(WHOLE, 0xE1),
                   mel_durs=[WHOLE] * BARS, obb_durs=[WHOLE] * BARS,
@@ -103,7 +107,7 @@ def run(card, work, exe, tag):
     log = os.path.join(work, tag + '.fmlog')
     open(img, 'wb').write(E.build(card))
     r = subprocess.run([exe, img, '-o', log, '--quiet', '--seconds', '60',
-                        '--roms', P.ROM_DIR], capture_output=True, text=True)
+                        '--roms', P.ROM_DIR, '--mix', 'cartridge'], capture_output=True, text=True)
     if not os.path.isfile(log):
         raise P.Missing('csrc/playcard wrote no capture for %s:\n%s'
                         % (tag, (r.stdout + r.stderr).strip()))

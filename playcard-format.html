@@ -462,6 +462,10 @@
   <tr><td class="m">5×<i>N</i></td><td>Alphabet</td><td><i>N</i> indices into the 32-symbol master table</td></tr>
 </table>
 </div>
+<div class="note">
+<b>The UPA-01 cannot play five of those 32 tempos</b>
+<p>It hands the card's metronome mark to its own panel as <code>floor(bpm / 4) &minus; 10</code> (ROM <code>0x4305</code>, through the table at <code>0x4363</code>), an index into the panel's 41 settings from 40 to 200&nbsp;bpm in steps of 4 (<code>0x433A</code>). A mark that is not a multiple of 4 is rounded down: <strong>63 plays at 60, 66 at 64, 69 at 68, 126 at 124 and 138 at 136.</strong> Measured on the cartridge: Lesson&nbsp;1a, Somewhere My Love, Ebb Tide and Night and Day come out at 59.9, 67.8, 124.0 and 135.5&nbsp;bpm. The card carries the exact mark; this machine is the one that loses it.</p>
+</div>
 
 <h3>The voice tables</h3>
 <div class="col">
@@ -648,7 +652,7 @@ Bit 7 decides one thing when <em>reading</em> a card: whether an event that repe
 </div>
 
 <div class="col">
-<p>Measured, on the firmware, with two cards that differ in nothing else: 28 notes, no pitch repeated anywhere, same lengths, same header, same chart, same three-symbol alphabet, 47 bytes each. Every melody duration plain in one and <code>| 0x80</code> in the other. Capturing the YM2151's key on/off register:</p>
+<p>Measured on the <strong>UPA-01</strong>, with two cards that differ in nothing else: 28 notes, no pitch repeated anywhere, same lengths, same header, same chart, same three-symbol alphabet, 47 bytes each. Every melody duration plain in one and <code>| 0x80</code> in the other. Capturing the YM2151's key on/off register:</p>
 </div>
 
 <table>
@@ -1142,8 +1146,10 @@ tick   744  bar 8.75   <b>0x11</b>                      <i>passage 3</i></pre>
 <p>The cartridge's <code>INIT</code> copies a five-byte <code>RST 30h</code> stub into <strong>H.KEYI</strong> (<code>0xFD9A</code>), so every VDP interrupt enters the cartridge at <code>0x410D</code>. That gates on the VDP's own frame flag &mdash; <code>IN A,(099h)</code> at <code>0x7DD1</code> &mdash; and jumps to <code>0x431F</code>, which is <code>LD HL,(0CC58h)</code> / <code>JP (HL)</code>: a state machine dispatched through a RAM vector. <strong>One pass is one tick of the sequencer.</strong></p>
 <p>The rate that machine expects is <strong>100 ticks a second</strong>. On a card declaring 120&nbsp;bpm a quarter note measures 49.7 ticks, and bpm &times; ticks-per-quarter comes to 6000 &mdash; which is right only at 100&nbsp;Hz.</p>
 <p>No MSX VDP supplies it. A PAL machine interrupts at 50&nbsp;Hz and the music comes out at <strong>exactly half tempo</strong>; an NTSC one would give 0.6&times;. And the ROM never reads the BIOS frame-rate flag at <code>0x002B</code>, so it does not scale itself to the machine either. A sequencer clocked off the VDP would play 20% faster in Japan than in Europe, which is not something Yamaha would ship &mdash; so the VDP interrupt is almost certainly not the intended clock. The one source in a CX5M that can be programmed to a fixed rate regardless of the video standard is the <strong>YM2151's own timer</strong>, which is also the chip the cartridge already drives.</p>
-<p><strong>And it is now demonstrated, not just measured.</strong> An emulated CX5M that delivers timer A's interrupt plays a 120&nbsp;bpm card at <strong>120.4&nbsp;bpm</strong>; the same machine driven only by a 50&nbsp;Hz VDP plays it at half that. So the timer is the clock, and half tempo under an emulator means the OPM's interrupt is not reaching the firmware. <code>csrc/playcard.c</code> is the demonstration.</p>
-<p><strong>The timer values, measured rather than deduced.</strong> Running the machine in Python (<code>msx_player.py</code>) and watching what the SFG programs, the FM module starts <strong>both</strong> OPM timers with their interrupts enabled &mdash; register <code>0x14</code> = <code>0x3F</code> &mdash; and loads timer A with <code>CLKA</code> = 512, which at the chip's 3.579545&nbsp;MHz clock is a period of 9.154&nbsp;ms: <strong>109.24&nbsp;Hz</strong>. That is the clock the music was written for, and it is within 10% of the 100 a second the tempo arithmetic implies.</p>
+<p><strong>And it is now demonstrated, not just measured.</strong> An emulated CX5M that delivers timer A's interrupt plays a 120&nbsp;bpm card at <strong>119.7&nbsp;bpm</strong>; the same machine driven only by a 50&nbsp;Hz VDP plays it at half that. So the timer is the clock, and half tempo under an emulator means the OPM's interrupt is not reaching the firmware. <code>csrc/playcard.c</code> is the demonstration.</p>
+<p>This used to say 120.4, on a figure taken before a fault crept into that program. From then until 2026-09-21 <strong>every capture it made ran about 4% slow</strong>: it runs the machine a quarter of a second at a time, and each call restarted timer A's count from nothing, throwing away the part of a period already elapsed &mdash; a missed tick exactly every 250&nbsp;ms. With the phase kept across calls the SFG's handler services 95.772 interrupts a second against 95.771 programmed, and every tempo lands within the chip's own resolution: 39.9&nbsp;bpm for 40, 99.9 for 100, 199.8 for 200.</p>
+<p><strong>The timer values, measured rather than deduced.</strong> Running the machine in Python (<code>msx_player.py</code>) and watching what the SFG programs, the FM module starts <strong>both</strong> OPM timers with their interrupts enabled &mdash; register <code>0x14</code> = <code>0x3F</code> &mdash; and loads timer A with <code>CLKA</code> = 512, which at the chip's 3.579545&nbsp;MHz clock is a period of 9.154&nbsp;ms: <strong>109.24&nbsp;Hz</strong>. That is where the SFG leaves it, within 10% of the 100 a second the tempo arithmetic implies.</p>
+<p><strong>Then the cartridge sets the timer from the tempo</strong>, once a card starts and again whenever the panel's tempo moves. For 120&nbsp;bpm it loads <code>CLKA</code> = 440, 95.771&nbsp;Hz, and the sequencer takes one card tick every two overflows: 47.9 ticks a second, 119.7&nbsp;bpm. The divider changes with the tempo to keep the timer in range &mdash; one overflow a tick at 140&nbsp;bpm, four at 40 &mdash; and the residue of a few tenths of a percent is the timer counting in whole steps of 64 clocks.</p>
 <p>The practical consequence is for captures: under an emulator the sequencer gets only the VDP's ticks, so <strong>anything timed in seconds off a capture is at half speed</strong>. Ratios measured within one capture are unaffected.</p>
 </div>
 
@@ -1406,7 +1412,7 @@ Walk the buffer from the start of this track's region:
 
 <div class="col">
 <p>The melody was running throughout, striking a note every 0.17 s, so it passed its own opcode 17 within three seconds of starting. No chord record appears there, or anywhere, until the obbligato arrives at the same index.</p>
-<p>This is read from the cartridge's own handler rather than from the audio, so the chord-dropout artifact cannot affect it, and it is a <em>local</em> comparison — a record against the note beside it — which survives the emulator's unreliable absolute timing. The PCS-30 agrees structurally: that machine keeps the chord chart as its <strong>own span</strong> and never merges it into either stream, so the cartridge's inlining is a decoding strategy rather than something the format asks for.</p>
+<p>This is read from the cartridge's own handler rather than from the audio, so the chord-dropout artifact cannot affect it, and it is a <em>local</em> comparison — a record against the note beside it — which would survive a capture whose absolute timing was off, as every capture from <code>csrc/playcard</code> was, by 4%, until 2026-09-21. The PCS-30 agrees structurally: that machine keeps the chord chart as its <strong>own span</strong> and never merges it into either stream, so the cartridge's inlining is a decoding strategy rather than something the format asks for.</p>
 </div>
 
 <h3>How the UPA-01 voices an accompaniment chord <span class="tag proven">confirmed</span></h3>
