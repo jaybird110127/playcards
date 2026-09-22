@@ -927,8 +927,12 @@ dispatcher `0x59D8` -> pattern handler `0x5A9B` -> `0x4850` service 5 -> `0x4CB5
 envelopes, the decoded voice table, measured output-pin filters, vibrato, tuning, drums, and the
 tempo table at `0x1B83` (played bpm = 10070/(entry+1), a 167.8 Hz tick; 120 bpm cards play at
 127.4). Measured from the card owner's PCS-30 recordings (not in the repository) by lining each up
-with `pcs30_arrange.py`'s arrangement of its card; the analysis scripts were not kept. The global
-alignment drifts by up to a note, so notes were found locally by pitch.
+with `pcs30_arrange.py`'s arrangement of its card; the analysis scripts were not kept, so the
+document's "How the recordings were measured" holds the method instead - align on an onset curve
+searching offset *and* speed ratio (the keyboard plays fast), find each note again locally by pitch
+purity because the global fit drifts by up to a note, and measure only notes that are alone. Its
+four traps are worth reading before any of it is redone; the fourth is that melody-against-obbligato
+balance cannot be measured this way at all, which was learned twice.
 
 **`pcs30_synth.py`, a PCS-30 synthesizer - WORK IN PROGRESS (2026-09-22).** It renders a card
 from `pcs30_arrange.py --chip` (new: the parts as the chip's four channels play them - the whole
@@ -942,7 +946,8 @@ and a double-counted roll-off (the pin filters already include the chain). Still
 brightness, bass on guitar-chord cards, Mickey's guitar melody level, snare. The chord voice is
 decoded (`0x2D12`/`0x2D1C` by rhythm, guitar a step down); the bass is always entry 2. All of it
 is in `pcs30-sound.md`. The user's recordings are in `tmp/PCS-30 Recordings/` (not committed);
-renders go to `tmp/pcs30-synth/`.
+renders go to `tmp/pcs30-synth/`. **Set aside on 2026-09-22** with those items open; all of them are
+balance, all by ear, so resuming means listening to a render beside a recording of the same card.
 
 **The obbligato duck (2026-09-22).** On the UPA-01 the duck is velocity: `0xD324` (`0x60` ducked,
 `0x80` full) rides with each obbligato note from `0x5E2F`, and the SFG voice decides the effect -

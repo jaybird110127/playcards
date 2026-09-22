@@ -14,7 +14,8 @@ neither has one for the Portasounds that share its chip. It comes from three pla
 * the datasheet of the **YM2163**, a close relative of the PCS-30's chip (below);
 * **recordings of a real PCS-30** playing about sixty original cards, made by the card owner. They
   are not in this repository. Each was lined up against the PCS-30 arrangement of its card, which
-  says what should be sounding at every moment, and measured where a part sounds on its own.
+  says what should be sounding at every moment, and measured where a part sounds on its own -
+  "How the recordings were measured", below, has the method and its traps.
 
 How sure each finding is gets said where it is made.
 
@@ -50,6 +51,10 @@ which shows the pins themselves are plain outputs and the character is added out
 
 The PCS-30 has four melodic parts, which is exactly the chip's four channels: **melody,
 obbligato, bass, and a single-line chord part**. The drums are separate.
+
+**Neither chip has an emulator anywhere** - MAME has no YM2142 and no YM2163 - so nothing can be
+checked against a known-good implementation. Everything below is the datasheet, the ROM, or a
+measurement.
 
 ## Waveforms
 
@@ -245,6 +250,45 @@ velocity worth 0 to 1.5 dB depending on the voice - nothing at all for the harps
 `csrc/playcard` ducks the PCS-30's way by default; see "How deep the duck is depends on the
 machine" in `playcard-format.md` and "The obbligato duck" in `csrc/README.md`.
 
+## How the recordings were measured
+
+Every measurement above comes from about sixty recordings of a real PCS-30 playing original cards,
+against the arrangement `pcs30_arrange.py` makes of the same card, which says what should be
+sounding at every instant. The scripts that did it were scratch work and were not kept, so here is
+the method and, more usefully, the four ways it goes wrong.
+
+**Lining a recording up with its card.** Take an onset curve of each - rising energy per 10 ms
+frame for the recording, note starts for the arrangement - and search offset and *speed ratio*
+together for the best correlation. The ratio matters: the keyboard plays the card 1.5 to 6% fast
+(above), and the recordings were made on real hardware, so a search that assumes the card's own
+tempo finds nothing. Search roughly 0.9 to 1.15, coarse first and then fine around the winner.
+Where the card behind a recording is not certain, score every candidate and take the best.
+
+**Then find each note again locally.** The global fit drifts by up to a whole note over a few
+minutes, which is far too much to measure a harmonic in. So for each note, search ±0.35 s around
+where the fit predicts it and keep the window in which that note's own fundamental band holds the
+largest share of the energy - its *pitch purity*. Below about 20% the note has not been found;
+throw it away rather than measure the wrong thing.
+
+**Measure only notes that are alone.** Longer than 0.3 s, no other part sounding a harmonic within
+4% of the fundamental, no drum within 0.1 s of the attack, and the measurement window taken from
+30 ms after the attack to no more than 80% of the note. That leaves few notes - a handful per card -
+which is why some findings rest on three notes and say so.
+
+**The four traps, each of which cost an evening:**
+
+* **A scoring bias picks the wrong alignment.** The first version scored notes the arrangement puts
+  out of the instrument's range as if they sounded, and happily aligned a recording a bar off.
+* **A coarse grid straddles the peak.** One pass at a tolerance loose enough to find the region is
+  not accurate enough to measure in, and one tight enough to measure in never finds it. Two passes.
+* **A cached render is worse than no measurement.** Deleting the renders from the shell did not
+  reach the path Python's `tempfile` had chosen, so a whole round of comparisons was made against
+  the previous synth. Re-render every time.
+* **Melody against obbligato cannot be measured this way at all.** An obbligato note that is clean
+  by the rules above, under a melody, is too rare - a few per corpus. This was tried twice and both
+  times produced numbers with a spread wider than the thing being measured. The balance between the
+  parts, and so `PIN_DB`, has to be set by ear. Do not try it a third time.
+
 ## What is still unknown
 
 * **The analogue filters' real shapes and the rhythm outputs' filtering.** A schematic would give
@@ -298,6 +342,14 @@ Open when this was written:
 * whether **Mickey Mouse March's guitar melody**, now louder, is too prominent;
 * the **snare's** level and colour, measured only under the music;
 * the **envelope times**, still the datasheet's.
+
+**Set aside on 2026-09-22**, at that point. Everything the five rounds settled is in the code and
+above; what is left is all balance and all by ear, so picking it up again means listening to a
+render beside a recording of the same card and moving `PIN_DB`, `DRUM_GAIN` and the envelope times.
+The recordings are the card owner's and are not in this repository; renders went to
+`tmp/pcs30-synth/`. Two things would change the game rather than the balance: a PCS-30 schematic,
+which would give the output filters and the mix outright, and the chip's master clock, which would
+turn the datasheet's envelope times into seconds.
 
 ## Sources
 
