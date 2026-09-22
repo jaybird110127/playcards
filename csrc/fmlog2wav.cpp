@@ -23,6 +23,13 @@
  * The chip runs at its real 3.579545 MHz, which gives a native sample rate of
  * clock/64 = 55930 Hz.  Output is resampled to the requested rate by linear
  * interpolation, which is inaudible against the chip's own aliasing.
+ *
+ * The output is MONO.  The YM2151 is a stereo chip, panning each channel with
+ * bits 6 and 7 of registers 0x20-0x27, but the Playcard cartridge never uses
+ * it: across all 264 cards every such write sets both bits or neither, so the
+ * two sides are sample-for-sample identical and a stereo file only doubled
+ * the size.  The mono sample is (left + right) / 2, which is exactly either
+ * side when they agree, and a fair downmix should a capture ever pan.
  */
 
 #include <cstdio>
@@ -122,7 +129,7 @@ int main(int argc, char **argv)
     printf("  ymfm ym2151 at %.0f Hz clock -> %u Hz native\n", OPM_CLOCK, native);
 
     size_t total = (size_t)(duration * native);
-    std::vector<float> left(total, 0.0f), right(total, 0.0f);
+    std::vector<float> mono(total, 0.0f);
     ymfm::ym2151::output_data frame;
 
     size_t next = 0;
@@ -134,8 +141,7 @@ int main(int argc, char **argv)
             next++;
         }
         opm.generate(&frame, 1);
-        left[i] = frame.data[0] / 32768.0f;
-        right[i] = frame.data[1] / 32768.0f;
+        mono[i] = (frame.data[0] + frame.data[1]) / 65536.0f;
     }
 
     /* ---- find where the audio actually is ---- */
@@ -145,10 +151,8 @@ int main(int argc, char **argv)
 
     double peak = 0.0;
     for (size_t i = lo; i < hi; i++) {
-        double l = left[i] < 0 ? -left[i] : left[i];
-        double r = right[i] < 0 ? -right[i] : right[i];
-        if (l > peak) peak = l;
-        if (r > peak) peak = r;
+        double m = mono[i] < 0 ? -mono[i] : mono[i];
+        if (m > peak) peak = m;
     }
 
     if (trim && peak > 0.0) {
@@ -158,15 +162,13 @@ int main(int argc, char **argv)
         double thr = peak * 0.001;
         size_t a = lo, b = hi;
         while (a < hi) {
-            double l = left[a] < 0 ? -left[a] : left[a];
-            double r = right[a] < 0 ? -right[a] : right[a];
-            if (l > thr || r > thr) break;
+            double m = mono[a] < 0 ? -mono[a] : mono[a];
+            if (m > thr) break;
             a++;
         }
         while (b > a) {
-            double l = left[b - 1] < 0 ? -left[b - 1] : left[b - 1];
-            double r = right[b - 1] < 0 ? -right[b - 1] : right[b - 1];
-            if (l > thr || r > thr) break;
+            double m = mono[b - 1] < 0 ? -mono[b - 1] : mono[b - 1];
+            if (m > thr) break;
             b--;
         }
         if (a < b) {
@@ -192,25 +194,20 @@ int main(int argc, char **argv)
     size_t span = (hi > lo) ? hi - lo : 0;
     size_t outn = (size_t)((double)span / native * rate);
     std::vector<uint8_t> body;
-    body.reserve(outn * 4);
+    body.reserve(outn * 2);
     double outpeak = 0.0;
     for (size_t i = 0; i < outn; i++) {
         double src = (double)i * native / rate;
         size_t j = lo + (size_t)src;
         double frac = src - (size_t)src;
         if (j + 1 >= total) break;
-        double l = (left[j] + (left[j + 1] - left[j]) * frac) * gain;
-        double r = (right[j] + (right[j + 1] - right[j]) * frac) * gain;
-        if (l > outpeak) outpeak = l;
-        if (-l > outpeak) outpeak = -l;
-        int li = (int)(l * 32767.0);
-        int ri = (int)(r * 32767.0);
-        if (li > 32767) li = 32767;
-        if (li < -32768) li = -32768;
-        if (ri > 32767) ri = 32767;
-        if (ri < -32768) ri = -32768;
-        put16(body, (uint16_t)(int16_t)li);
-        put16(body, (uint16_t)(int16_t)ri);
+        double m = (mono[j] + (mono[j + 1] - mono[j]) * frac) * gain;
+        if (m > outpeak) outpeak = m;
+        if (-m > outpeak) outpeak = -m;
+        int mi = (int)(m * 32767.0);
+        if (mi > 32767) mi = 32767;
+        if (mi < -32768) mi = -32768;
+        put16(body, (uint16_t)(int16_t)mi);
     }
 
     std::vector<uint8_t> hdr;
@@ -219,10 +216,10 @@ int main(int argc, char **argv)
     const char *wave = "WAVEfmt "; hdr.insert(hdr.end(), wave, wave + 8);
     put32(hdr, 16);
     put16(hdr, 1);                      /* PCM */
-    put16(hdr, 2);                      /* stereo */
+    put16(hdr, 1);                      /* mono */
     put32(hdr, rate);
-    put32(hdr, rate * 4);
-    put16(hdr, 4);
+    put32(hdr, rate * 2);               /* bytes a second */
+    put16(hdr, 2);                      /* bytes a frame */
     put16(hdr, 16);
     const char *data = "data"; hdr.insert(hdr.end(), data, data + 4);
     put32(hdr, (uint32_t)body.size());
@@ -232,7 +229,7 @@ int main(int argc, char **argv)
     fwrite(hdr.data(), 1, hdr.size(), f);
     fwrite(body.data(), 1, body.size(), f);
     fclose(f);
-    printf("  wrote %s: %.2f s, %d Hz stereo, peak %.2f of full scale\n",
-           out, (double)(body.size() / 4) / rate, rate, outpeak);
+    printf("  wrote %s: %.2f s, %d Hz mono, peak %.2f of full scale\n",
+           out, (double)(body.size() / 2) / rate, rate, outpeak);
     return 0;
 }

@@ -508,23 +508,23 @@ enum { MIX_CARTRIDGE, MIX_LEAD, MIX_KARAOKE };
 #define ACC_CHORD 28               /* the accompaniment the targets are over */
 #define ACC_BASS  26
 #define ACC_DRUMS 26
-#define ACC_LUFS  (-37.9)          /* ...measured, all three together */
+#define ACC_LUFS  (-40.9)          /* ...measured, all three together */
 #define VOICE_MELODY    0xD2FB     /* 0x80 | the card's melody voice, 1-10 */
 #define VOICE_OBBLIGATO 0xD320     /* 0x80 | the obbligato voice, 1-8 */
 
 /* Integrated loudness (BS.1770: K-weighted, gated, so rests do not count) of
  * each voice playing its part alone at panel volume 30, LUFS on this program's
- * output.  The mean over eight cards re-headed to each voice in turn; a voice
- * varies by 1-2 LU from card to card, the piano by up to 4.  Index 0 - a voice
- * field out of range - is the mean. */
+ * output, rendered by fmlog2wav as mono.  The mean over eight cards re-headed
+ * to each voice in turn; a voice varies by 1-2 LU from card to card, the piano
+ * by up to 4.  Index 0 - a voice field out of range - is the mean. */
 static const char *MELODY_VOICE[11] = {"?", "piccolo", "organ", "violin",
     "trumpet", "oboe", "clarinet", "harpsichord", "piano", "vibraphone", "guitar"};
-static const double MELODY_LUFS[11] = {-42.5,
-    -40.2, -43.1, -41.9, -41.9, -39.1, -40.4, -44.1, -47.7, -46.1, -40.9};
+static const double MELODY_LUFS[11] = {-45.5,
+    -43.2, -46.1, -44.9, -44.9, -42.1, -43.4, -47.1, -50.7, -49.1, -43.9};
 static const char *OBBLIGATO_VOICE[9] = {"?", "oboe", "flute", "strings",
     "brass", "clarinet", "piano", "harpsichord", "guitar"};
-static const double OBBLIGATO_LUFS[9] = {-42.7,
-    -39.8, -39.5, -43.3, -44.1, -40.8, -48.3, -44.3, -41.9};
+static const double OBBLIGATO_LUFS[9] = {-45.7,
+    -42.8, -42.5, -46.3, -47.1, -43.8, -51.3, -47.3, -44.9};
 
 static int parse_mix(const char *name, int *mix)
 {

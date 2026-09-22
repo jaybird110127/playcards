@@ -147,26 +147,26 @@ over an oboe obbligato barely comes out on top.
 
 So each voice was measured. `voice_levels.py` re-heads eight cards to each voice
 in turn and plays that part alone at volume 30, measuring integrated loudness
-(BS.1770: K-weighted and gated, so rests do not count), in LUFS on this
-program's output:
+(BS.1770: K-weighted and gated, so rests do not count), in LUFS on
+`fmlog2wav`'s mono output:
 
 | melody voice | LUFS | | obbligato voice | LUFS |
 |---|---:|---|---|---:|
-| piccolo | −40.2 | | oboe | −39.8 |
-| organ | −43.1 | | flute | −39.5 |
-| violin | −41.9 | | strings | −43.3 |
-| trumpet | −41.9 | | brass | −44.1 |
-| oboe | −39.1 | | clarinet | −40.8 |
-| clarinet | −40.4 | | piano | −48.3 |
-| harpsichord | −44.1 | | harpsichord | −44.3 |
-| piano | −47.7 | | guitar | −41.9 |
-| vibraphone | −46.1 | | | |
-| guitar | −40.9 | | | |
+| piccolo | −43.2 | | oboe | −42.8 |
+| organ | −46.1 | | flute | −42.5 |
+| violin | −44.9 | | strings | −46.3 |
+| trumpet | −44.9 | | brass | −47.1 |
+| oboe | −42.1 | | clarinet | −43.8 |
+| clarinet | −43.4 | | piano | −51.3 |
+| harpsichord | −47.1 | | harpsichord | −47.3 |
+| piano | −50.7 | | guitar | −44.9 |
+| vibraphone | −49.1 | | | |
+| guitar | −43.9 | | | |
 
 A voice varies by 1 to 2 LU from card to card - the piano, whose notes decay,
 by up to 4 - so the voice, not the song, decides most of it. Loudness is linear
 in the panel volume for every voice: 1.13 LU a step, from 20 to 40. The
-accompaniment at chord 28, bass 26, rhythm 26 measures −37.9 LUFS, within
+accompaniment at chord 28, bass 26, rhythm 26 measures −40.9 LUFS, within
 ±1.5 across cards.
 
 `lead` reads the card's two voice numbers as the firmware decodes the header
@@ -322,6 +322,16 @@ F2: 43588 FM register writes, 3278 key-ons
 
 That is a real card, and it is why the old fixed default was no good: 90 seconds
 of music against a 20-second capture.
+
+## Mono, because the cartridge is
+
+`fmlog2wav` writes **mono** WAV files. The YM2151 can pan each channel left,
+right or both, with bits 6 and 7 of registers `0x20`-`0x27`, but this cartridge
+never pans: across all 264 cards every such write turns both sides on or both
+off, and the chip's two outputs are identical sample for sample. A stereo file
+was twice the size for nothing. The mono sample is the average of the two
+sides, so it equals either exactly; checked against the stereo renderer on a
+dozen cards with every option, it is the same audio bit for bit.
 
 ## Trimming and level
 
