@@ -155,6 +155,12 @@ python pcs30_arrange.py card.bin -o card.mid
 
 This one needs the pattern tables, which are Yamaha's music and are not in this repository. Run `pcs30_extract.py` once against a PCS-30 ROM you own and it will build them.
 
+**`upa_arrange.py`** does the same job with the **cartridge's own** patterns, which were decoded in September 2026 &mdash; so the two arrangers play one card as the two machines play it, and share most of their machinery. It corrects the cartridge as it goes, and says so: its chord part lands on the beat rather than the step late the cartridge sends it, a fill takes the rhythm's feel as the PC-100 and the PCS-30 play it, and bossa-nova's last chord moves onto the clave. `--as-is` turns all of that off. By default it takes its drum patterns from the PCS-30, whose are the better ones by ear, and the cartridge's own drum fills; `--drums upa` needs no PCS-30 ROM.
+
+```bash
+python upa_arrange.py card.bin -o card.mid
+```
+
 ### Under openMSX &mdash; historical
 
 `play_card.py` and `card_to_midi.py` drive a real openMSX installation. **They came first, and everything in this project up to mid-2026 was measured through them.** Nothing needs them now. `csrc/playcard` runs the same cartridge about 150 times faster, at the right tempo, with no emulator installed; `msx_player.py` does the same in pure Python when something needs stepping; and `csrc/playcard --screen` reads the cartridge's own settings panel, which was the last thing openMSX was still required for.
@@ -217,6 +223,23 @@ csrc/playcard card.bin --watch 0xD349 --watch-out card.watch
 
 **`sweep_block2.py`** is an example of that turned on the whole collection, and **`same_root_entries.py`** is a corpus-wide look at one odd corner of the chord chart &mdash; entries that name a root the sound chip cannot play, which turn out to mean &ldquo;keep the chord you have and add this to it&rdquo;.
 
+## The cartridge's own accompaniment
+
+A card selects an accompaniment and does not carry one: ten rhythms, two patterns each, six drum fills, and the patterns themselves live in the instrument. The cartridge's are in its ROM, and **`upa_extract.py`** lifts them out into a file this repository does not ship &mdash; they are Yamaha's music, while their addresses and the code that reads them are a description of a machine. Run it once:
+
+```bash
+python upa_extract.py
+```
+
+**`upa_rhythm.py`** then prints those patterns over any chord you name, as strikes and chord tones, both bars of each. It is also where the voicing an export uses lives: the chord in the octave band ending at C5, and a bass root of C2 that drops an octave from G upwards.
+
+```bash
+python upa_rhythm.py --chord G7 --rhythm march
+python upa_rhythm.py --fills
+```
+
+How the tables are laid out, and how they were found and measured, is in the &ldquo;accompaniment patterns&rdquo; section of [HANDOFF.md](HANDOFF.md). The short version: a drum byte is a five-bit strike mask, an accompaniment byte carries both of a rhythm's patterns in its two nibbles, and everything happens wherever a field changes.
+
 ## The PCS-30
 
 The PCS-30 is a different Playcard-capable keyboard, and the source of the accompaniment this project uses. How it makes its sound &mdash; its sound chip, voices, filters, drums and tempo, read from its ROM and measured from recordings of a real one &mdash; is in [pcs30-sound.md](pcs30-sound.md).
@@ -242,7 +265,7 @@ python pcs30_drums.py --rhythm waltz
 
 ## The libraries
 
-Not command-line tools, but the parts everything else is assembled from: `playcard_encode.py` builds a card from scratch, `playcard_resolve.py` reproduces the firmware's repeat resolution exactly, `playcard_expand.py` and `playcard_compress.py` handle repeat spans, `playcard_midi.py` holds the channel layout the round trip depends on, and `pcs30_tables.py` loads the PCS-30 pattern data for whatever wants it.
+Not command-line tools, but the parts everything else is assembled from: `playcard_encode.py` builds a card from scratch, `playcard_resolve.py` reproduces the firmware's repeat resolution exactly, `playcard_expand.py` and `playcard_compress.py` handle repeat spans, `playcard_midi.py` holds the channel layout the round trip depends on, `pcs30_tables.py` loads the PCS-30 pattern data for whatever wants it, and `upa_extract.py` doubles as the loader for the cartridge's.
 
 ## What you need
 
