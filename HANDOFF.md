@@ -930,6 +930,20 @@ tempo table at `0x1B83` (played bpm = 10070/(entry+1), a 167.8 Hz tick; 120 bpm 
 with `pcs30_arrange.py`'s arrangement of its card; the analysis scripts were not kept. The global
 alignment drifts by up to a note, so notes were found locally by pitch.
 
+**`pcs30_synth.py`, a PCS-30 synthesizer - WORK IN PROGRESS (2026-09-22).** It renders a card
+from `pcs30_arrange.py --chip` (new: the parts as the chip's four channels play them - the whole
+bass table on the bass channel with its own note-offs, no dropped kick/snare doubles). Five rounds
+of listening by the card owner fixed: bass rerouting (Silent Night's C2 E3 E3 G2), the organ's
+GM octave (undone in the synth; piccolo's kept), retrigger swells (model: every note keyed, attack
+starts from the current level), drum envelopes (measured: fall to half in 10 ms, linear, hard stop),
+snare silences a simultaneous cymbal (waltz beats 2-3), vibrato delay (~250 ms, ~12 cents p-p),
+and a double-counted roll-off (the pin filters already include the chain). Still set by ear:
+`PIN_DB` (OR3 +4, OR2 -4), two-pin voices at full level on both, `DRUM_GAIN`. Open: violin
+brightness, bass on guitar-chord cards, Mickey's guitar melody level, snare. The chord voice is
+decoded (`0x2D12`/`0x2D1C` by rhythm, guitar a step down); the bass is always entry 2. All of it
+is in `pcs30-sound.md`. The user's recordings are in `tmp/PCS-30 Recordings/` (not committed);
+renders go to `tmp/pcs30-synth/`.
+
 **The obbligato duck (2026-09-22).** On the UPA-01 the duck is velocity: `0xD324` (`0x60` ducked,
 `0x80` full) rides with each obbligato note from `0x5E2F`, and the SFG voice decides the effect -
 1-2 TL steps for most voices, **zero for the harpsichord** (Love Theme: no audible duck at all). The

@@ -227,6 +227,12 @@ Run this once and the rest work without a ROM:
 python pcs30_extract.py
 ```
 
+**`pcs30_synth.py`** plays a card the way a PCS-30 would sound, as a `.wav`. It is a work in progress: close, but its balance is still being tuned against recordings of a real keyboard.
+
+```bash
+python pcs30_synth.py mycard.bin -o mycard.wav
+```
+
 **`pcs30_rhythm.py`** prints the accompaniment patterns over any chord you name; **`pcs30_drums.py`** prints the drum patterns and the six fills; **`pcs30_demo.py`** pulls out the three demo tunes stored in the keyboard's ROM.
 
 ```bash

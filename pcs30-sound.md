@@ -84,6 +84,13 @@ Envelope 0 is the one that decays by itself; 1 to 3 hold while the key is down. 
 datasheet's, and presumably scale with the chip's clock; they have not yet been measured on the
 PCS-30.
 
+**Every note is keyed, but the attack starts from where the level already is.** That is the one
+model that fits two things heard in the recordings: a sustaining voice - the flute opening Here
+Comes Santa Claus, brass - moves from note to note with no dip at all (the level holds within
+0.2 dB across note changes), while the harpsichord opening Love Theme is struck afresh on every
+note, even notes that follow with no lift. A voice already at full level has nothing to climb; a
+decaying one jumps back up.
+
 ## The voices
 
 The voice table at ROM `0x2CFC` holds a (`88H`, `8CH`) pair for each voice, and two tables map the
@@ -103,16 +110,30 @@ card's voice fields onto it: `0x1BA3` for the melody, `0x1BAD` for the obbligato
 | 10 | violin | strings | St | 1 | 0 dB | OR1 |
 
 The PCS-30's own panel offers only six of these - violin, organ, clarinet, piano, guitar and
-vibraphone. Trumpet, oboe, piccolo and harpsichord exist for cards. The accompaniment's chord and
-bass voices are chosen per rhythm from other tables (`0x2D12`, `0x2D1C`) and are not decoded yet.
+vibraphone. Trumpet, oboe, piccolo and harpsichord exist for cards.
+
+**The accompaniment's voices.** The chord part takes its entry from a table by rhythm, `0x2D12`,
+or `0x2D1C` when the alternate pattern is on (`0x0EB7`): the **guitar** (entry 3) for rhumba,
+samba, swing, bossa-nova, 16-beat, waltz and disco, the **piano** (entry 2) for rock, slow-rock
+and march, and the other way round on the alternate pattern. A guitar chord part is played a
+volume step down (`0x0EC8`). **The bass is always entry 2**, the piano's settings - the Pf
+waveform, the decaying envelope, the dark OR3 (`0x0F0C`); `0x0F2D` also drops it a step on
+slow-rock in one mode, not yet pinned down.
+
+**The bass channel plays the whole bass table**, including the notes above the chord's root octave
+that `pcs30_arrange.py` moves to the guitar for a General MIDI synth: in Silent Night's C major the
+bass channel goes C2, E3, E3, G2, E3, E3 while the chord part plays C4 on beats 2 and 3.
+`pcs30_arrange.py --chip` writes the parts that way.
 
 Oboe and trumpet share waveform and envelope and differ only in their output pin, which is the
 plainest sign that much of what tells these voices apart is in the analogue filters.
 
 **Bit 3 of `88H` is a vibrato.** It is blank on the YM2163 and set only for the vibraphone, the
 flute and the violin, and the recordings settle what it does: flute, strings and violin notes
-wobble by 3 to 12 cents at **about 6 Hz**, while clarinet, brass and oboe notes hold dead steady
-(0.0 to 0.1 cents).
+wobble at **about 6 Hz**, while clarinet, brass and oboe notes hold dead steady (0.0 to 0.1
+cents). **It is delayed:** on the Santa Claus flute, pitch tracked every 3 ms, there is no wobble
+for about the first 250 ms of every note - legato notes included - and then it grows to its full
+swing of **about 12 cents peak to peak** within about 100 ms.
 
 ## The analogue filters: why the PCS-30 sounds muffled
 
@@ -156,6 +177,18 @@ envelope.
 | 2 | **snare** (SDN, "snare drum noise") | **noise**, mostly 500 Hz to 3 kHz, with no fundamental - confirmed by ear | |
 | 3 | **long cymbal** (HHO, "hi-hat open") | metallic: fixed partials at 673, 2016, 2519, 3359 and 5373 Hz | about 100 ms |
 | 4 | **short cymbal** (HHD, "hi-hat closed") | the same partials as the long one | about 42 ms |
+
+**None of them fades smoothly.** Measured every 4 ms on clean hits (Feel Like Makin' Love's
+opening), each falls to about half in the first 10 ms, runs down in a straight line and then
+stops dead: the kick and latin drum are gone by about 60 ms, the short cymbal by about 70 ms, and
+the long cymbal holds a shelf at about a quarter of its peak until it stops at about 130 ms. The
+kick's pitch holds steady at 110-113 Hz throughout - no drop.
+
+**A snare struck with a cymbal silences the cymbal.** The waltz pattern in the ROM strikes snare
+and short cymbal together on beats 2 and 3, yet the waltz in Silent Night has only a snare there:
+measured against a known cymbal hit, whose metallic partials stand about 14 dB above the noise,
+and a known snare, 7 to 10 dB below, those beats read 2 to 7 dB below - snare. The three share
+the RH2 output, which would account for it.
 
 The kick and latin drum repeat almost sample for sample from hit to hit (correlation 0.98 or
 better), so they are fixed waveforms, not noise. The two cymbals are **one sound with two decay
@@ -218,19 +251,53 @@ machine" in `playcard-format.md` and "The obbligato duck" in `csrc/README.md`.
   them; failing that, the fits above.
 * **The chip's master clock**, and so the envelope times in seconds. The 168 Hz tick is the best
   handle on it.
-* **The accompaniment's chord and bass voices**, chosen per rhythm; the tables are found, not
-  decoded.
+* **How the four output pins are mixed.** The synth's balance is set by ear.
+* **What `0x0F2D`'s bass step down on slow-rock depends on.**
 * **The oboe's filter** (too few clean notes), and why the trumpet measures unlike the brass.
 * **The snare's exact band**, measured only under the music.
 * **How the cymbal's partials are made** from the 168 Hz clock.
 
-## A synthesizer
+## A synthesizer (work in progress)
 
-Everything a first draft needs is above: four channels of stepped waveform times a straight-line
-envelope, a two-bit volume, a 6 Hz vibrato on three voices, a low-pass filter per output pin, two
-square-wave drums, a noise snare, a metallic cymbal with two decays, and the tempo table. Fed by
-`pcs30_arrange.py`, it could play any card the PCS-30's way - and because the recordings exist, it
-can be checked against the real keyboard card by card.
+`pcs30_synth.py` plays a card the PCS-30's way, from `pcs30_arrange.py --chip`, and **it is not
+finished**: after five rounds of listening against recordings of a real PCS-30 it is closer, but
+still has balance issues. It builds on everything above - the waveforms, envelopes and voice
+table, the keying model, the delayed vibrato, a filter per output pin, the measured drums, the
+snare-over-cymbal rule and the tempo table.
+
+What the listening settled, and is in it:
+
+* **the bass channel plays the whole bass table** (the missing E3s in Silent Night);
+* **the organ plays where the card says** - `pcs30_arrange.py` raises it an octave for General
+  MIDI synths, and the synth takes that back out (the piccolo's octave, which the real keyboards
+  play, stays);
+* **no swell on held notes**, from the keying model;
+* **the vibrato's delay and depth**, as measured;
+* **the drums' envelopes**, as measured, and the snare-over-cymbal rule;
+* **no extra roll-off after the mix**: the pin filters were measured from recordings and already
+  include everything after the chip. Adding one darkened the violin.
+
+What is set by ear and still under test - each value is marked where it is set:
+
+* **how loud each output pin is in the mix** (`PIN_DB`: OR3 +4 dB, OR2 −4 dB). Nothing says;
+  the recordings could not settle it, because an obbligato under the melody is rarely clean
+  enough to measure. The two observations behind it: the flute under Silent Night's violin and
+  the piano under Röslein's clarinet were both too quiet, and both are on OR3; and brass
+  measured about 5 dB loud.
+* **a voice on two pins is at full level on both.** Splitting it instead left the guitar chord
+  part far under the bass.
+* **each drum's level** (`DRUM_GAIN`). Matched first to the ratio of drum peak to music level in
+  the recordings, which overshot, then brought down 6 dB by ear, with the snare raised again.
+
+Open when this was written:
+
+* whether the **violin** is now as bright as the real one;
+* whether the **bass** still stands out on cards with a guitar chord part (Silent Night, Lady
+  Madonna, Here Comes Santa Claus) - Röslein and Mickey Mouse March, with a piano chord part,
+  sounded right;
+* whether **Mickey Mouse March's guitar melody**, now louder, is too prominent;
+* the **snare's** level and colour, measured only under the music;
+* the **envelope times**, still the datasheet's.
 
 ## Sources
 

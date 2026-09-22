@@ -3,6 +3,7 @@
 
     python pcs30_arrange.py card.bin [-o out.mid]
     python pcs30_arrange.py card.bin --chord-octave 1
+    python pcs30_arrange.py card.bin --chip           # the keyboard's own channels
     python pcs30_arrange.py --all                     # the whole card corpus
     python pcs30_arrange.py --all --in-dir . --out-dir out
 
@@ -373,7 +374,12 @@ def write_midi(path, parts, bpm, tpq=24, beats=4):
 # ---------------------------------------------------------------- arrange
 
 def arrange(card, out=None, chord_octave=0, bass_prog=32, chord_prog=24,
-            bass_span=11, drop=(), vel=None, quiet=False):
+            bass_span=11, drop=(), vel=None, quiet=False, chip=False):
+    """chip=True writes the parts as the PCS-30's own chip channels play them,
+    for pcs30_synth.py rather than a General MIDI synth: the whole bass table
+    stays on the bass channel with its own note-offs, and a step that strikes
+    kick and snare together keeps both.  The three accommodations it drops are
+    all for GM instruments, and each is marked where it happens."""
     vv = dict(melody=MELODY_VEL, obbligato=OBBLIGATO_VEL,
               bass=BASS_VEL, guitar=GUITAR_VEL)
     vv.update(vel or {})
@@ -490,7 +496,12 @@ def arrange(card, out=None, chord_octave=0, bass_prog=32, chord_prog=24,
                         pending = False
                         roots_forced += 1
                     n = note_of(bv, root, minor)
-                    if n <= bass_ceiling:
+                    if chip:
+                        # The keyboard's bass channel plays the whole table,
+                        # folded-in accompaniment notes and all, and stops
+                        # where the table says.
+                        bass_v.strike(tick, n)
+                    elif n <= bass_ceiling:
                         # A real bass note.  It runs to the next bass note or to
                         # the bar line, whichever comes first - the pattern's own
                         # note-offs are ignored for this voice.
@@ -500,7 +511,10 @@ def arrange(card, out=None, chord_octave=0, bass_prog=32, chord_prog=24,
                         upper_v.strike(tick, n)
                         routed += 1
                 elif bv == 0x00:
-                    upper_v.off(tick)           # only the rerouted voice stops
+                    if chip:
+                        bass_v.off(tick)
+                    else:
+                        upper_v.off(tick)       # only the rerouted voice stops
 
                 if gv == 0x00:
                     chord_v.off(tick)
@@ -524,7 +538,7 @@ def arrange(card, out=None, chord_octave=0, bass_prog=32, chord_prog=24,
                     # are all off the beat, and samba's carry its swing).
                     # A FILL is exempt throughout: its snare is the point of
                     # it, which is why this sits in the non-fill branch.
-                    if m & (1 << KICK) and m & (1 << SNARE):
+                    if m & (1 << KICK) and m & (1 << SNARE) and not chip:
                         if s == 0:
                             m &= ~(1 << SNARE)      # the downbeat is the kick's
                             snares_dropped += 1
@@ -624,6 +638,10 @@ def main():
                     help='semitones above the root that still count as bass; '
                          'anything higher is routed to the guitar (default 11, '
                          'the whole octave - use 7 to stop at the fifth)')
+    ap.add_argument('--chip', action='store_true',
+                    help="the parts as the PCS-30's own chip channels play them - the "
+                         'whole bass table on the bass channel, every drum strike - '
+                         'for pcs30_synth.py rather than a General MIDI synth')
     ap.add_argument('--bass-program', type=int, default=32, help='GM program (default 32)')
     ap.add_argument('--chord-program', type=int, default=24, help='GM program (default 24)')
     a = ap.parse_args()
@@ -638,10 +656,11 @@ def main():
     vel = dict(melody=a.melody_velocity, obbligato=a.obbligato_velocity,
                bass=a.bass_velocity, guitar=a.guitar_velocity)
     opts = (a.chord_octave, a.bass_program, a.chord_program, a.bass_span, drop, vel)
+    extra = dict(chip=a.chip)
 
     try:
         if not a.all:
-            arrange(a.card, a.out, *opts)
+            arrange(a.card, a.out, *opts, **extra)
             return
 
         if a.in_dir:
