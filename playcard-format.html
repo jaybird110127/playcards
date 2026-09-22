@@ -956,39 +956,7 @@ Bit 7 decides one thing when <em>reading</em> a card: whether an event that repe
 
 <div class="col">
 <p>Love Theme itself has a harpsichord obbligato, and on this cartridge it does not drop back at all when the guitar melody enters.</p>
-<p><strong>The PCS-30 ducks by 6&nbsp;dB, whatever the voice.</strong> Its handler for the duck nibble sets bit 0 of <code>0x80D7</code> (<code>0x2ACA</code>; the restore clears it at <code>0x2ABD</code>), <code>0x1E48</code> copies the flag into <code>0x80D1</code>, and at every obbligato note <code>0x0F77</code> adds <code>0x10</code> to the level byte it sends to its sound chip, register <code>0x8C</code> plus the channel. That chip is the YM2142, which is undocumented, but the PCS-30 drives it exactly as the <strong>YM2163</strong> is documented to be driven, and that datasheet survives:</p>
-</div>
-
-<table>
-  <tr><th>YM2163 registers</th><th>Contents</th></tr>
-  <tr><td class="m">80H&ndash;87H</td><td>pitch, octave and key-on, a register a channel</td></tr>
-  <tr><td class="m">88H&ndash;8BH</td><td>envelope E2 E1, sustain, waveform W3&ndash;W1</td></tr>
-  <tr><td class="m hi">8CH&ndash;8FH</td><td><strong>volume VL2 VL1</strong>: <code>00</code> 0&nbsp;dB, <code>01</code> &minus;6&nbsp;dB, <code>10</code> &minus;12&nbsp;dB, <code>11</code> off; then F4&ndash;F1, which of four output pins the channel goes to</td></tr>
-  <tr><td class="m">90H&ndash;97H</td><td>rhythm triggers and level</td></tr>
-</table>
-
-<div class="col">
-<p>The PCS-30 reaches its chip through one port, <code>0xE030</code> &mdash; a byte with bit 7 set is a register address, and the next byte's low seven bits are its data, exactly as the datasheet describes &mdash; and writes <code>0x84</code>, <code>0x88</code>, <code>0x8C</code> and <code>0x90</code>. It never writes a pitch divider to <code>0x80</code>: at <code>0x0D5D</code> it turns a note into <strong>octave &times; 16 + semitone</strong>, sets <code>0x40</code> for key-on, and writes that to <code>0x84</code>. So the YM2142 has a note table of its own where the YM2163 takes a raw divider &mdash; the one place the two chips are known to differ &mdash; and its tuning cannot be read from anything here.</p>
-<p>Every entry of the voice table at <code>0x2CFC</code> decodes cleanly as an (<code>88H</code>, <code>8CH</code>) pair, and the tables at <code>0x1BA3</code> and <code>0x1BAD</code> say which card voice uses which entry:</p>
-</div>
-
-<table>
-  <tr><th class="m">Entry</th><th>Card melody voice</th><th>Card obbligato voice</th><th>Waveform</th><th class="m">Envelope</th><th>Level</th><th>Output</th></tr>
-  <tr><td class="m">0</td><td>organ</td><td></td><td>Pf</td><td class="m">3</td><td>0&nbsp;dB</td><td>OR3</td></tr>
-  <tr><td class="m">1</td><td>clarinet</td><td>clarinet</td><td>Cl</td><td class="m">1</td><td>&minus;6&nbsp;dB</td><td>OR1 + OR2</td></tr>
-  <tr><td class="m">2</td><td>piano</td><td>piano</td><td>Pf</td><td class="m">0</td><td>0&nbsp;dB</td><td>OR3</td></tr>
-  <tr><td class="m">3</td><td>guitar</td><td>guitar</td><td>St</td><td class="m">0</td><td>0&nbsp;dB</td><td>OR2 + OR3</td></tr>
-  <tr><td class="m">4</td><td>harpsichord</td><td>harpsichord</td><td>Hc</td><td class="m">0</td><td>0&nbsp;dB</td><td>OR4</td></tr>
-  <tr><td class="m">6</td><td>vibraphone</td><td></td><td>Cl</td><td class="m">0, sustain on</td><td>0&nbsp;dB</td><td>OR3</td></tr>
-  <tr><td class="m">7</td><td>piccolo</td><td>flute</td><td>Cl</td><td class="m">1</td><td>0&nbsp;dB</td><td>OR3</td></tr>
-  <tr><td class="m">8</td><td>oboe</td><td>oboe</td><td>St</td><td class="m">1</td><td>&minus;6&nbsp;dB</td><td>OR4</td></tr>
-  <tr><td class="m">9</td><td>trumpet</td><td>brass</td><td>St</td><td class="m">1</td><td>0&nbsp;dB</td><td>OR2</td></tr>
-  <tr><td class="m">10</td><td>violin</td><td>strings</td><td>St</td><td class="m">1</td><td>0&nbsp;dB</td><td>OR1</td></tr>
-</table>
-
-<div class="col">
-<p>The waveforms are the datasheet's five &mdash; St a stepped sawtooth, Cl a square, Pf, Or and Hc narrower stepped pulses &mdash; and envelope 0 is the one that decays, 1 to 3 the three that hold. Bit 3 of <code>88H</code>, blank on the YM2163, is set only for the vibraphone, the flute and the violin, which suggests a vibrato; that is a guess. Oboe and trumpet share waveform and envelope and differ only in their output pin, so much of what tells the voices apart is in the analogue filters on the keyboard's board, which no document found describes.</p>
-<p>Bit 4 of <code>8CH</code> is VL1, so <strong><code>0x10</code> is one volume step, exactly 6&nbsp;dB</strong>. The clarinet and the oboe start at &minus;6&nbsp;dB and so duck to &minus;12, and the flute &mdash; entry 7, which <code>0x0F86</code> singles out &mdash; always plays a step down, duck or not.</p>
+<p><strong>The PCS-30 ducks by 6&nbsp;dB, whatever the voice.</strong> At every obbligato note it adds <code>0x10</code> to the level it writes to its sound chip, and on that chip &mdash; the YM2142, register-compatible with the documented YM2163 &mdash; <code>0x10</code> is one volume step of exactly 6&nbsp;dB. The mechanism, the chip and the PCS-30's voices are in <a href="https://github.com/jaybird110127/playcards/blob/main/pcs30-sound.md">pcs30-sound.md</a>, which is about how that keyboard makes its sound rather than about the format.</p>
 <p>So the card's two opcodes are the same on both machines, and what they do is not: a clear 6&nbsp;dB on the keyboard, and from nothing to 1.5&nbsp;dB on the cartridge. <code>csrc/playcard</code> ducks the PCS-30's way by default.</p>
 </div>
 

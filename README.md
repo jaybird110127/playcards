@@ -219,7 +219,7 @@ csrc/playcard card.bin --watch 0xD349 --watch-out card.watch
 
 ## The PCS-30
 
-The PCS-30 is a different Playcard-capable keyboard, and the source of the accompaniment this project uses.
+The PCS-30 is a different Playcard-capable keyboard, and the source of the accompaniment this project uses. How it makes its sound &mdash; its sound chip, voices, filters, drums and tempo, read from its ROM and measured from recordings of a real one &mdash; is in [pcs30-sound.md](pcs30-sound.md).
 
 Run this once and the rest work without a ROM:
 
@@ -260,6 +260,7 @@ or the tool.
 | [playcard-format.md](playcard-format.md) | The format itself, in full. Start here |
 | [HANDOFF.md](HANDOFF.md) | The state of the work: what is settled, what is still open, and which past conclusions turned out to be wrong |
 | [midi-roundtrip-design.md](midi-roundtrip-design.md) | How the decompile/compile cycle is designed and why |
+| [pcs30-sound.md](pcs30-sound.md) | How the PCS-30 keyboard makes its sound: chip, voices, filters, drums, tempo |
 | [csrc/README.md](csrc/README.md) | The C emulator and renderer |
 | [Sample Playcards/README.md](Sample%20Playcards/README.md) | How to write a MIDI file the compiler will take, and what the format cannot carry |
 | [new-cards/README.md](new-cards/README.md) | The cards written for this project, and what each one asks |

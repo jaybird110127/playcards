@@ -534,7 +534,8 @@ survives: at `8CH`-`8FH`, bits 5 and 4 are the volume, `00` 0 dB, `01` −6 dB,
 analogue filters - the channel goes to. Every voice in the PCS-30's own table
 at `0x2CFC` decodes cleanly with that layout, so `0x10` is one step of volume:
 **exactly 6 dB**. (The PCS-30 also always plays the flute obbligato a step
-down, and the clarinet and oboe start at −6 dB and duck to −12.)
+down, and the clarinet and oboe start at −6 dB and duck to −12. How the PCS-30
+makes its sound is in `../pcs30-sound.md`.)
 
 **So by default this program ducks as the PCS-30 does.** When the cartridge
 takes a `0x14`, `0xD324` goes straight back to full, so its own voice-dependent

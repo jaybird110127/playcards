@@ -923,6 +923,13 @@ note and no other part's count changes. `--keep-chord-dropout` or `--as-is` leav
 chase used the new `--trace ADDR` (registers and stack at an address): event pump `0x606E` -> event
 dispatcher `0x59D8` -> pattern handler `0x5A9B` -> `0x4850` service 5 -> `0x4CB5`.
 
+**The PCS-30's sound now has its own document, `pcs30-sound.md` (2026-09-22):** chip, waveforms,
+envelopes, the decoded voice table, measured output-pin filters, vibrato, tuning, drums, and the
+tempo table at `0x1B83` (played bpm = 10070/(entry+1), a 167.8 Hz tick; 120 bpm cards play at
+127.4). Measured from the card owner's PCS-30 recordings (not in the repository) by lining each up
+with `pcs30_arrange.py`'s arrangement of its card; the analysis scripts were not kept. The global
+alignment drifts by up to a note, so notes were found locally by pitch.
+
 **The obbligato duck (2026-09-22).** On the UPA-01 the duck is velocity: `0xD324` (`0x60` ducked,
 `0x80` full) rides with each obbligato note from `0x5E2F`, and the SFG voice decides the effect -
 1-2 TL steps for most voices, **zero for the harpsichord** (Love Theme: no audible duck at all). The
