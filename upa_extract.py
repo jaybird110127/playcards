@@ -190,9 +190,24 @@ def extract(rom):
     return out
 
 
+def grid(steps, field, bar):
+    """One line a field: X where it rises, - where it holds, . where it is out.
+
+    Both bars of the block, with a bar line between them.  A block is two bars
+    and some rhythms really do differ between them, so it is never folded.
+    """
+    line = ''
+    for k in range(len(steps)):
+        if k and k % bar == 0:
+            line += '|'
+        now, was = field(steps[k]), field(steps[k - 1])
+        line += 'X' if now and now != was else ('-' if now else '.')
+    return line
+
+
 def show(doc):
     """Print the patterns as strikes and chord tones - what they actually say."""
-    print('DRUMS - a strike where a bit rises; one column a step\n')
+    print('DRUMS - a strike where a bit rises; one column a step, both bars\n')
     for what in ('drums', 'fills'):
         for i, row in enumerate(doc[what]):
             steps = [int(row['steps'][k:k + 2], 16)
@@ -201,11 +216,7 @@ def show(doc):
             print('  %-11s %s  %d ticks a step, %d beats a bar'
                   % (name, row['at'], row['ticks_a_step'], row['beats']))
             for bit, drum, where in DRUM_BITS:
-                line = ''
-                for k in range(len(steps) // 2):          # one bar of the two
-                    now = steps[k] >> bit & 1
-                    was = steps[k - 1] >> bit & 1
-                    line += 'X' if now and not was else ('-' if now else '.')
+                line = grid(steps, lambda v, b=bit: v >> b & 1, len(steps) // 2)
                 if 'X' in line:
                     print('     %-9s %s' % (drum, line))
         print()
@@ -216,16 +227,17 @@ def show(doc):
                  for k in range(0, len(row['steps']), 2)]
         print('  %-11s %s  %d ticks a step, %d beats a bar'
               % (RHYTHM[i], row['at'], row['ticks_a_step'], row['beats']))
+        bar = len(steps) // 2
         for shift, which in ((0, 'standard'), (4, 'alternate')):
-            bass, chord = '', ''
-            for k in range(len(steps) // 2):
-                v = steps[k] >> shift
-                was = steps[k - 1] >> shift
-                bass += str(v & 7) if (v & 7) != (was & 7) and v & 7 else \
-                    ('-' if v & 7 else '.')
-                chord += 'X' if v & 8 and not was & 8 else ('-' if v & 8 else '.')
+            bass = ''
+            for k in range(len(steps)):
+                if k and k % bar == 0:
+                    bass += '|'
+                v, was = steps[k] >> shift & 7, steps[k - 1] >> shift & 7
+                bass += str(v) if v and v != was else ('-' if v else '.')
             print('     %-9s bass  %s' % (which, bass))
-            print('     %-9s chord %s' % ('', chord))
+            print('     %-9s chord %s'
+                  % ('', grid(steps, lambda v, s=shift: v >> s & 8, bar)))
         print()
 
 

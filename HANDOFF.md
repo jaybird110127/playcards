@@ -412,6 +412,7 @@ desynchronise`, which looks like a pass.
 | `pcs30_drums.py` | Its drum patterns and the six fills, from `pcs30-tables.json`. `--card X.bin` is different in kind: it *executes* the firmware's bar-mark handler and reports the drum state bar by bar, so that mode needs the ROM itself |
 | `pcs30_extract.py` | Reads a PCS-30 ROM once and writes `pcs30-tables.json`: the eight pattern tables at `0x2D26` and the five drum bit-planes at `0x2BBC`. Checks the shape of both before writing, so a wrong image is caught here rather than three tools later. `--check` reports on an existing file |
 | `upa_extract.py` | Reads a UPA-01 cartridge ROM once and writes `upa-tables.json`: the ten drum patterns at `0x523B`, the six drum fills at `0x5251` and the ten accompaniment patterns at `0x5261`, with each block's flags and ticks a step. Checks the whole structure first - the pointers, that the blocks tile their region exactly, and that every drum byte's low bits are the constant 2 - so a wrong image is caught here. `--check` reports on an existing file, `--show` prints the patterns as strikes and chord tones |
+| `upa_rhythm.py` | Those patterns over any chord: `--chord G7 --rhythm march`, `--alternate` for the other pattern of each rhythm, `--fills` for the six drum fills, `--raw` for the bytes. Reads `upa-tables.json`, not the ROM. This is where the owner's export voicing lives - the chord in the octave band ending at C5, the bass root C2 up to F#2 and then G1 up to B1 - so a MIDI exporter should import it rather than invent its own |
 | `pcs30_tables.py` | Loads that file for everything else, and is where `pitch_byte` and `drum_mask` live. Run alone it says whether the tables are present and which ROM they came from |
 
 ## Corrupting a card on purpose
@@ -1109,7 +1110,32 @@ out **shuffled**, which is where a fill's fixed feel comes from. Fills are copie
 the same buffer - so a fill replaces the drums and nothing else - and they use only three of the five
 bits: cymbal, kick and snare.
 
-**Still open**, and the next thing to do:**Still open**, and the next thing to do:
+### Turning them into notes: the export voicing
+
+What the tables give is a chord-tone number and a bare strike, so an export has to decide the rest,
+and what the cartridge does is no help: its chord part's key codes spell a root and a flattened third
+whatever the chord is, and its bass puts **every** root in one octave band whose top note is C, so a
+chord on B sounds eleven semitones below one on C. The owner's own voicing, which `upa_rhythm.py`
+carries and any MIDI or other export should use:
+
+* **the chord** is root, third and fifth, plus the flattened seventh on a seventh chord, each note
+  placed in the one octave band that **ends at C5** - anything that would go above C5 drops an
+  octave. C major seventh comes out **E4 G4 A#4 C5**, and E major seventh **D4 E4 G#4 B4**.
+* **the bass root** is **C2** for a C chord and rises to F#2, and then G and above **drop an
+  octave**: G1, G#1, A1, A#1, B1. The bass never climbs out of its register, which is what the
+  cartridge's own band fails to do.
+* **the bass's other tones** sit above that root at the intervals the cartridge itself uses, measured
+  off the engine's table on C, G and E in all four chord types: **third** (minor on a minor or minor
+  seventh chord, major otherwise), **fifth** 7, **sixth** 9, **flattened seventh** 10 - flat whatever
+  the chord type - and **octave** 12. So chord-tone 3 on a C chord is G2, and on a G chord D2.
+
+These are conventions and the document says so where they appear; everything above them is measured.
+
+**Both bars are always two bars.** A block is 192 ticks and some rhythms genuinely differ between
+its halves - rhumba's second cymbal and latin drum both do - so nothing that prints or exports a
+pattern may fold it to one bar.
+
+**Still open**, and the next thing to do:
 
 * **what bits 2-0 of a drum byte are**, always `0x02` and never anything else.
 * **how the chord part's multipliers spell a chord** - the capture has them, and reading them is how
