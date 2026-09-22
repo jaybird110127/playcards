@@ -822,12 +822,39 @@ drives it exactly as the **YM2163** is documented to be driven, and that datashe
 | **`8CH`–`8FH`** | **volume VL2 VL1**: `00` 0 dB, `01` −6 dB, `10` −12 dB, `11` off; then F4–F1, which of four output pins the channel goes to |
 | `90H`–`97H` | rhythm triggers and level |
 
-The PCS-30 writes to `0x80`, `0x84`, `0x88`, `0x8C` and `0x90`, and every entry of its voice table
-at `0x2CFC` decodes cleanly as an (`88H`, `8CH`) pair: a small waveform number, a two-bit envelope,
-and a routing to one or two of the four outputs, which on a keyboard feed four different analogue
-filters. Bit 4 is VL1, so **`0x10` is one volume step, exactly 6 dB**. Two of the table's voices
-start at −6 dB and so duck to −12, and one obbligato voice - probably the flute, if the mapping at
-`0x1BAD` is read right - always plays a step down, duck or not.
+The PCS-30 reaches its chip through one port, `0xE030` - a byte with bit 7 set is a register
+address, and the next byte's low seven bits are its data, exactly as the datasheet describes - and
+writes `0x84`, `0x88`, `0x8C` and `0x90`. It never writes a pitch divider to `0x80`: at `0x0D5D` it
+turns a note into **octave × 16 + semitone**, sets `0x40` for key-on, and writes that to `0x84`. So
+the YM2142 has a note table of its own where the YM2163 takes a raw divider - the one place the two
+chips are known to differ - and its tuning cannot be read from anything here.
+
+Every entry of the voice table at `0x2CFC` decodes cleanly as an (`88H`, `8CH`) pair, and the
+tables at `0x1BA3` and `0x1BAD` say which card voice uses which entry:
+
+| entry | card melody voice | card obbligato voice | waveform | envelope | level | output |
+|---:|---|---|---|---:|---|---|
+| 0 | organ | | Pf | 3 | 0 dB | OR3 |
+| 1 | clarinet | clarinet | Cl | 1 | −6 dB | OR1 + OR2 |
+| 2 | piano | piano | Pf | 0 | 0 dB | OR3 |
+| 3 | guitar | guitar | St | 0 | 0 dB | OR2 + OR3 |
+| 4 | harpsichord | harpsichord | Hc | 0 | 0 dB | OR4 |
+| 6 | vibraphone | | Cl | 0, sustain on | 0 dB | OR3 |
+| 7 | piccolo | flute | Cl | 1 | 0 dB | OR3 |
+| 8 | oboe | oboe | St | 1 | −6 dB | OR4 |
+| 9 | trumpet | brass | St | 1 | 0 dB | OR2 |
+| 10 | violin | strings | St | 1 | 0 dB | OR1 |
+
+The waveforms are the datasheet's five - St a stepped sawtooth, Cl a square, Pf, Or and Hc
+narrower stepped pulses - and envelope 0 is the one that decays, 1 to 3 the three that hold.
+Bit 3 of `88H`, blank on the YM2163, is set only for the vibraphone, the flute and the violin,
+which suggests a vibrato; that is a guess. Oboe and trumpet share waveform and envelope and differ
+only in their output pin, so much of what tells the voices apart is in the analogue filters on the
+keyboard's board, which no document found describes.
+
+Bit 4 of `8CH` is VL1, so **`0x10` is one volume step, exactly 6 dB**. The clarinet and the oboe
+start at −6 dB and so duck to −12, and the flute - entry 7, which `0x0F86` singles out - always
+plays a step down, duck or not.
 
 So the card's two opcodes are the same on both machines, and what they do is not: a clear 6 dB on
 the keyboard, and from nothing to 1.5 dB on the cartridge. `csrc/playcard` ducks the PCS-30's way
