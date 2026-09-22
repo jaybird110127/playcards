@@ -99,6 +99,30 @@
 #define SFG_CHORD         0xEC23       /* bit 7: a chord is sounding */
 #define CART_CHORD        0xD353       /* bit 7: send this chord */
 
+/* The obbligato duck, done as the PCS-30 does it.
+ *
+ * A card's 0x14 means "the melody is entering: duck the obbligato", and 0x13
+ * "restore it".  The cartridge's handlers (0x5FB2 and 0x5F9D) set the
+ * obbligato's level byte 0xD324 to 0x60 or 0x80, and 0x5E2F sends that with
+ * every obbligato note as a kind of key velocity.  How much a note softens
+ * then depends on the SFG-01 voice: 1 or 2 TL steps (0.75-1.5 dB) for most,
+ * and nothing at all for the harpsichord.
+ *
+ * The PCS-30 (0x2ACA sets its flag, 0x0F77 applies it at every obbligato
+ * note) adds 0x10 to the channel's level register on its YM2142, which on the
+ * register-compatible YM2163 is one step of VL: exactly 6 dB, for every voice.
+ *
+ * So by default: put 0xD324 straight back to full, so the cartridge's own
+ * voice-dependent duck does not happen, and while ducked add DUCK_TL to the
+ * total level of every carrier on the obbligato's channel as it is written.
+ * The cartridge writes those levels at every obbligato note, so the duck takes
+ * hold from the next note, as on the PCS-30.  --duck DB sets the depth,
+ * --duck cartridge (or --as-is) leaves the cartridge's own alone. */
+#define DUCK_SET          0x5FBF       /* just after the 0x14 handler's stores */
+#define DUCK_CLEAR        0x5FAA       /* just after the 0x13 handler's stores */
+#define OBB_LEVEL         0xD324
+#define OBB_CHANNEL       2            /* the obbligato's FM channel, always */
+
 /* The cartridge's panel settings.  The keys (V and the arrows, T, K) write the
  * WANTED value into a block at 0xCC26, and a routine that runs a few hundred
  * times a second compares each one with the live copy at 0xCC09 and, where
@@ -203,6 +227,10 @@ typedef struct {
     int shown_voices;              /* the voice pair last reported, or -1 */
     int fix_dropout;               /* repair the chord dropout; see above */
     long dropouts_fixed;
+    int duck_tl;                   /* TL units to duck by, or -1: the cartridge's */
+    int ducked;
+    long ducks;
+    uint8_t alg[8];                /* each channel's algorithm, from 0x20-0x27 */
 
     unsigned long *pchist;         /* one count an address, or NULL */
     unsigned long pcfrom;          /* not before this cycle */
@@ -285,6 +313,14 @@ static void opm_write(msx *m, uint8_t reg, uint8_t val)
     }
 }
 
+/* Which operators reach the output, by algorithm.  The TL registers run
+ * 0x60 M1, 0x68 M2, 0x70 C1, 0x78 C2, each plus the channel. */
+static int is_carrier(int alg, int op)
+{
+    static const uint8_t CARRIERS[8] = {8, 8, 8, 8, 12, 14, 14, 15};
+    return (CARRIERS[alg & 7] >> op) & 1;
+}
+
 static void wr(void *ud, uint16_t a, uint8_t v)
 {
     msx *m = (msx *)ud;
@@ -305,6 +341,14 @@ static void wr(void *ud, uint16_t a, uint8_t v)
              * a key-on there becomes a key-off, so the write stays in the log. */
             if (m->mute_melody && m->opmreg == 0x08 && (v & 7) < 2)
                 v &= 7;
+            if (m->opmreg >= 0x20 && m->opmreg <= 0x27)
+                m->alg[m->opmreg & 7] = (uint8_t)(v & 7);
+            if (m->ducked && m->duck_tl > 0 && m->opmreg >= 0x60 && m->opmreg < 0x80
+                && (m->opmreg & 7) == OBB_CHANNEL && is_carrier(m->alg[OBB_CHANNEL],
+                                                                (m->opmreg - 0x60) >> 3)) {
+                int tl = (v & 0x7F) + m->duck_tl;
+                v = (uint8_t)(tl > 0x7F ? 0x7F : tl);
+            }
             m->cap[m->ncap].reg = m->opmreg;
             m->cap[m->ncap].val = v;
             m->ncap++;
@@ -635,8 +679,18 @@ static void feed(msx *m)
     for (k = 0; k < m->ntrace; k++)
         if (m->cpu.pc == m->trace[k])
             trace_line(m);
-    if (m->cpu.pc == CARD_TEMPO_SET)
+    if (m->cpu.pc == CARD_TEMPO_SET) {
         impose_panel(m, 1);
+        m->ducked = 0;             /* a new card, or its second side */
+    }
+    if (m->duck_tl >= 0 && m->cpu.pc == DUCK_SET) {
+        poke(m, OBB_LEVEL, 0x80);
+        if (!m->ducked)
+            m->ducks++;
+        m->ducked = 1;
+    }
+    if (m->duck_tl >= 0 && m->cpu.pc == DUCK_CLEAR)
+        m->ducked = 0;
     if (m->cpu.pc == DROPOUT_CHORD_OFF && m->fix_dropout
         && (m->mem[SFG_CHORD] & 0x80)) {
         poke(m, CART_CHORD, (uint8_t)(m->mem[CART_CHORD] | 0x80));
@@ -963,6 +1017,7 @@ int main(int argc, char **argv)
     const char *keys_before = NULL, *keys_after = NULL;
     int want[NPANEL] = {-1, -1, -1, -1, -1, -1, -1};
     int tempo_rel = 0, tempo_delta = 0, mix = MIX_LEAD, fix_dropout = 1;
+    int duck_tl = 8;               /* 6 dB, the PCS-30's */
     double screenat = -1.0;        /* < 0 means "when the card ends" */
     const char *psgout = NULL;
     const char *watchout = NULL;
@@ -1016,6 +1071,20 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--as-is")) {
             mix = MIX_CARTRIDGE;
             fix_dropout = 0;
+            duck_tl = -1;
+        }
+        else if (!strcmp(argv[i], "--duck") && i + 1 < argc) {
+            const char *d = argv[++i];
+            if (!strcmp(d, "cartridge"))
+                duck_tl = -1;
+            else {
+                double db = atof(d);
+                if (db < 0 || db > 48) {
+                    fprintf(stderr, "playcard: --duck is 0 to 48 dB, or cartridge\n");
+                    return 2;
+                }
+                duck_tl = (int)floor(db / 0.75 + 0.5);
+            }
         }
         else if (!strcmp(argv[i], "--mix") && i + 1 < argc) {
             if (!parse_mix(argv[++i], &mix)) return 2;
@@ -1074,6 +1143,9 @@ int main(int argc, char **argv)
                 "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
                 "                   the card's own tempo instead\n"
                 "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
+                "   --duck DB       duck the obbligato under the melody by DB, 0.75 dB\n"
+                "                   steps; default 6, the PCS-30's. cartridge: the\n"
+                "                   UPA-01's own, 0-1.5 dB by voice\n"
                 "   --keep-chord-dropout  leave the UPA-01's chord dropout alone (it is\n"
                 "                   repaired by default: see csrc/README.md)\n"
                 "   --as-is         the machine untouched: --mix cartridge and every\n"
@@ -1110,6 +1182,9 @@ int main(int argc, char **argv)
             "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
             "                   the card's own tempo instead\n"
             "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
+                "   --duck DB       duck the obbligato under the melody by DB, 0.75 dB\n"
+                "                   steps; default 6, the PCS-30's. cartridge: the\n"
+                "                   UPA-01's own, 0-1.5 dB by voice\n"
                 "   --keep-chord-dropout  leave the UPA-01's chord dropout alone (it is\n"
                 "                   repaired by default: see csrc/README.md)\n"
                 "   --as-is         the machine untouched: --mix cartridge and every\n"
@@ -1136,6 +1211,7 @@ int main(int argc, char **argv)
     m->ntrace = ntrace;
     m->mix = mix;
     m->fix_dropout = fix_dropout;
+    m->duck_tl = duck_tl;
     m->mute_melody = mix == MIX_KARAOKE;
     m->quiet = quiet;
     m->shown_voices = -1;
@@ -1302,6 +1378,9 @@ int main(int argc, char **argv)
         if (!quiet) {
             printf("  %s: %ld FM register writes, %ld key-ons\n",
                    free_tempo ? "F5" : "F2", m->ncap - before, keyons);
+            if (m->duck_tl > 0 && m->ducks)
+                printf("  obbligato ducked %.2f dB, %ld time%s\n", m->duck_tl * 0.75,
+                       m->ducks, m->ducks == 1 ? "" : "s");
             if (m->dropouts_fixed)
                 printf("  chord dropout repaired %ld time%s\n", m->dropouts_fixed,
                        m->dropouts_fixed == 1 ? "" : "s");

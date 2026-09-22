@@ -923,6 +923,19 @@ note and no other part's count changes. `--keep-chord-dropout` or `--as-is` leav
 chase used the new `--trace ADDR` (registers and stack at an address): event pump `0x606E` -> event
 dispatcher `0x59D8` -> pattern handler `0x5A9B` -> `0x4850` service 5 -> `0x4CB5`.
 
+**The obbligato duck (2026-09-22).** On the UPA-01 the duck is velocity: `0xD324` (`0x60` ducked,
+`0x80` full) rides with each obbligato note from `0x5E2F`, and the SFG voice decides the effect -
+1-2 TL steps for most voices, **zero for the harpsichord** (Love Theme: no audible duck at all). The
+PCS-30 adds `0x10` at every obbligato note (`0x0F77`, flag from `0x2ACA`/`0x2ABD` via `0x1E48`) to
+its YM2142 register `0x8C+ch`. The YM2142 is undocumented but register-compatible with the
+**YM2163**, whose datasheet exists (denjhang/RE2-YM2163 on GitHub, MIT; also a Drive copy): `8CH`
+bits 5-4 are volume 0/-6/-12 dB/off, bits 3-0 route to four output pins (analogue filters); `88H`
+is envelope/sustain/waveform, and the PCS-30 voice table at `0x2CFC` decodes cleanly as (`88H`,
+`8CH`) pairs. So the PCS-30 duck is exactly **6 dB for every voice**. No YM2163/YM2142 emulator
+exists (MAME has neither). `csrc/playcard` now ducks like the PCS-30 by default: it resets `0xD324`
+to `0x80` at `0x5FBF` (after the `0x14` handler) and adds 8 TL to channel 2's carriers until
+`0x5FAA` (after `0x13`). `--duck DB`, `--duck cartridge`, and `--as-is` keeps the cartridge's.
+
 **Every capture from `csrc/playcard` before 2026-09-21 ran about 4% slow.** The playback loop runs the
 machine in quarter-second slices, and `run()` kept timer A's next overflow in a local variable, so
 each slice started the timer period afresh and lost a tick — exactly one every 250 ms, found by

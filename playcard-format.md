@@ -793,6 +793,46 @@ level change looks like and a voice reload does not.
 Those five bars are exactly the ones a player who knows the card predicted in advance, from the
 sound of the real instrument, before any of this was measured.
 
+### How deep the duck is depends on the machine
+
+Two steps of Total Level is 1.5 dB, which is hard to hear, and on some cards the UPA-01 does not
+duck at all. **On the UPA-01 the duck is a velocity, not a volume.** The only reader of `0xD324`
+is `0x5E2F`, which sends it with each obbligato note to the SFG-01, and what a softer note does is
+up to the voice. Love Theme re-headed to each obbligato voice in turn, at five panel volumes:
+
+| obbligato voice | the duck on the UPA-01 |
+|---|---|
+| flute, piano, guitar | 2 TL steps, 1.5 dB |
+| oboe, strings, brass, clarinet | 1 step, 0.75 dB |
+| **harpsichord** | **none**, at any volume |
+
+Love Theme itself has a harpsichord obbligato, and on this cartridge it does not drop back at all
+when the guitar melody enters.
+
+**The PCS-30 ducks by 6 dB, whatever the voice.** Its handler for the duck nibble sets bit 0 of
+`0x80D7` (`0x2ACA`; the restore clears it at `0x2ABD`), `0x1E48` copies the flag into `0x80D1`,
+and at every obbligato note `0x0F77` adds `0x10` to the level byte it sends to its sound chip,
+register `0x8C` plus the channel. That chip is the YM2142, which is undocumented, but the PCS-30
+drives it exactly as the **YM2163** is documented to be driven, and that datasheet survives:
+
+| YM2163 registers | contents |
+|---|---|
+| `80H`–`87H` | pitch, octave and key-on, a register a channel |
+| `88H`–`8BH` | envelope E2 E1, sustain, waveform W3–W1 |
+| **`8CH`–`8FH`** | **volume VL2 VL1**: `00` 0 dB, `01` −6 dB, `10` −12 dB, `11` off; then F4–F1, which of four output pins the channel goes to |
+| `90H`–`97H` | rhythm triggers and level |
+
+The PCS-30 writes to `0x80`, `0x84`, `0x88`, `0x8C` and `0x90`, and every entry of its voice table
+at `0x2CFC` decodes cleanly as an (`88H`, `8CH`) pair: a small waveform number, a two-bit envelope,
+and a routing to one or two of the four outputs, which on a keyboard feed four different analogue
+filters. Bit 4 is VL1, so **`0x10` is one volume step, exactly 6 dB**. Two of the table's voices
+start at −6 dB and so duck to −12, and one obbligato voice - probably the flute, if the mapping at
+`0x1BAD` is read right - always plays a step down, duck or not.
+
+So the card's two opcodes are the same on both machines, and what they do is not: a clear 6 dB on
+the keyboard, and from nothing to 1.5 dB on the cartridge. `csrc/playcard` ducks the PCS-30's way
+by default; see "The obbligato duck" in `csrc/README.md`.
+
 ### The same thing across the corpus
 
 State the claim so it can be counted: `0x14` should fire where the melody is about to sound and was
@@ -2538,8 +2578,9 @@ the capture cannot run at true speed. It is an excellent oracle and a poor conve
   reason is worth recording so it is not tried again: the two machines duck by different mechanisms
   entirely. The cartridge writes a level byte into three per-part parameter blocks of stride `0x25`
   and queues them outward; the PCS-30 keeps a single duck flag (bit 0 of `0x80D7`, mirrored into
-  `0x80D1`) and uses it at `0x0F91` to add `0x10` to an index into a level table at `0x2CFC` — a
-  quieter table entry rather than a scaled level. There is no three-block structure on that machine,
+  `0x80D1`) and uses it at `0x0F91` to add `0x10` - one 6 dB volume step - to the level it writes
+  to the obbligato's channel (see "How deep the duck is depends on the machine"). There is no
+  three-block structure on that machine,
   so it has no third part to name. `0xD349` belongs to the cartridge's model of the keyboard it
   drives, and only a keyboard that responds to it can identify it.
 - **What a "same root" chart entry is FOR.** The convention itself is decoded, and the two machines

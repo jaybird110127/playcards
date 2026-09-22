@@ -942,6 +942,36 @@ Bit 7 decides one thing when <em>reading</em> a card: whether an event that repe
 <p>Those five bars are exactly the ones a player who knows the card named in advance, from the sound of the real instrument, before any of it was measured.</p>
 </div>
 
+<h3>How deep the duck is depends on the machine</h3>
+<div class="col">
+<p>Two steps of Total Level is 1.5&nbsp;dB, which is hard to hear, and on some cards the UPA-01 does not duck at all. <strong>On the UPA-01 the duck is a velocity, not a volume.</strong> The only reader of <code>0xD324</code> is <code>0x5E2F</code>, which sends it with each obbligato note to the SFG-01, and what a softer note does is up to the voice. Love Theme re-headed to each obbligato voice in turn, at five panel volumes:</p>
+</div>
+
+<table>
+  <tr><th>Obbligato voice</th><th>The duck on the UPA-01</th></tr>
+  <tr><td>flute, piano, guitar</td><td>2 TL steps, 1.5&nbsp;dB</td></tr>
+  <tr><td>oboe, strings, brass, clarinet</td><td>1 step, 0.75&nbsp;dB</td></tr>
+  <tr><td class="hi">harpsichord</td><td class="hi">none, at any volume</td></tr>
+</table>
+
+<div class="col">
+<p>Love Theme itself has a harpsichord obbligato, and on this cartridge it does not drop back at all when the guitar melody enters.</p>
+<p><strong>The PCS-30 ducks by 6&nbsp;dB, whatever the voice.</strong> Its handler for the duck nibble sets bit 0 of <code>0x80D7</code> (<code>0x2ACA</code>; the restore clears it at <code>0x2ABD</code>), <code>0x1E48</code> copies the flag into <code>0x80D1</code>, and at every obbligato note <code>0x0F77</code> adds <code>0x10</code> to the level byte it sends to its sound chip, register <code>0x8C</code> plus the channel. That chip is the YM2142, which is undocumented, but the PCS-30 drives it exactly as the <strong>YM2163</strong> is documented to be driven, and that datasheet survives:</p>
+</div>
+
+<table>
+  <tr><th>YM2163 registers</th><th>Contents</th></tr>
+  <tr><td class="m">80H&ndash;87H</td><td>pitch, octave and key-on, a register a channel</td></tr>
+  <tr><td class="m">88H&ndash;8BH</td><td>envelope E2 E1, sustain, waveform W3&ndash;W1</td></tr>
+  <tr><td class="m hi">8CH&ndash;8FH</td><td><strong>volume VL2 VL1</strong>: <code>00</code> 0&nbsp;dB, <code>01</code> &minus;6&nbsp;dB, <code>10</code> &minus;12&nbsp;dB, <code>11</code> off; then F4&ndash;F1, which of four output pins the channel goes to</td></tr>
+  <tr><td class="m">90H&ndash;97H</td><td>rhythm triggers and level</td></tr>
+</table>
+
+<div class="col">
+<p>The PCS-30 writes to <code>0x80</code>, <code>0x84</code>, <code>0x88</code>, <code>0x8C</code> and <code>0x90</code>, and every entry of its voice table at <code>0x2CFC</code> decodes cleanly as an (<code>88H</code>, <code>8CH</code>) pair: a small waveform number, a two-bit envelope, and a routing to one or two of the four outputs, which on a keyboard feed four different analogue filters. Bit 4 is VL1, so <strong><code>0x10</code> is one volume step, exactly 6&nbsp;dB</strong>. Two of the table's voices start at &minus;6&nbsp;dB and so duck to &minus;12, and one obbligato voice &mdash; probably the flute, if the mapping at <code>0x1BAD</code> is read right &mdash; always plays a step down, duck or not.</p>
+<p>So the card's two opcodes are the same on both machines, and what they do is not: a clear 6&nbsp;dB on the keyboard, and from nothing to 1.5&nbsp;dB on the cartridge. <code>csrc/playcard</code> ducks the PCS-30's way by default.</p>
+</div>
+
 <h3>0x11 divides the card into practice passages</h3>
 <div class="col">
 <p>The counter at <code>0xD360</code> is bumped and queued outward, and the only code that reads it back is the routine that sends it (<code>0x6068</code>, 1648 times on one card) &mdash; the same shape as the flag at <code>0xD356</code>, and the same conclusion: its consumer is the keyboard. What the keyboard does with it is a <strong>repeat-practice feature</strong>. Press the button, then one key to loop a single passage or two keys to loop a range of them; on the PC-100 the selecting keys are the white keys from F2 upward. <code>0x11</code> says where one passage ends and the next begins.</p>
@@ -1737,7 +1767,7 @@ It gives a complete worked example of a Yamaha accompaniment generator built aro
 <li><strong>Which PCS-30 fill each mark names.</strong> The dispatch is settled and so is the mute, but a table bit index is a storage slot rather than a fill number, so which of the six stored patterns is heard for a given mark is still only inferred &mdash; from metre, which puts the two four-beat fills on marks 1 and 2 and the four twelve-slot ones on marks 3 to 6, exactly as the corpus families predict.</li>
 <li><strong>What a &ldquo;same root&rdquo; chart entry is FOR.</strong> The convention is decoded, but 61 of the 83 change no harmony while still costing a chart position. A re-strike fits the placement; a cue to the player's hands fits the form; nothing measurable separates them. The PC-1000's Chord Lesson was weighed and the distribution refuses it &mdash; none of that machine's own cards uses one.</li>
 <li><strong>The flag at <code>0xD356</code></strong> in the strict sense. Free tempo itself is no longer a mystery &mdash; <code>F5</code> selects it, <code>0xD222</code> records it, and the cartridge holds its own sequencer at <code>0x5B46</code> until the player plays the note. But the flag is a different thing from the mode byte, and it is only ever <em>transmitted</em>. What the keyboard does with it, and what makes the tempo follow the player once they have started, are still downstream of this ROM.</li>
-<li><strong>The third ducked part</strong>, <code>0xD349</code>, moved in step with the obbligato's <code>0xD324</code> by both opcodes. No channel responds to it on the card captured so far. <strong>The PCS-30 cannot settle it:</strong> the two machines duck by different mechanisms — the cartridge writes a level into three per-part blocks of stride <code>0x25</code>, while the PCS-30 keeps one flag and uses it to pick a quieter entry from a level table at <code>0x2CFC</code>. There is no third block on that machine to name.</li>
+<li><strong>The third ducked part</strong>, <code>0xD349</code>, moved in step with the obbligato's <code>0xD324</code> by both opcodes. No channel responds to it on the card captured so far. <strong>The PCS-30 cannot settle it:</strong> the two machines duck by different mechanisms — the cartridge writes a level into three per-part blocks of stride <code>0x25</code>, while the PCS-30 keeps one flag and uses it to add <code>0x10</code> &mdash; one 6&nbsp;dB volume step &mdash; to the level it writes to the obbligato's channel. There is no third block on that machine to name.</li>
 <li><strong>What the PC-100 does with a &ldquo;same root&rdquo; chart entry.</strong> The convention is decoded and the two machines that can be read disagree about it: the PCS-30 implements it, the cartridge does not and falls silent. But the 22 cards carrying one were pressed for neither &mdash; they date from 1982&ndash;85, against a 1984 keyboard and a 1985 cartridge &mdash; so the machine they were written for is the one that cannot be checked here.</li>
 <li><strong>A handful of notes.</strong> A few cards may still differ in detail; the corpus has been checked by ear but not exhaustively against the firmware.</li>
 </ul>

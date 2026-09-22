@@ -57,10 +57,12 @@ with a fixed feel rather than the rhythm's, chord notes drop, and a same-root ch
 the accompaniment. For what the card asks for, as against what this machine does with it, read
 `../playcard-format.md`.
 
-**One of those bugs is repaired by default**, the chord dropout: see "The chord dropout" below.
-`--keep-chord-dropout` leaves it in, and **`--as-is`** gives the machine untouched - the
-cartridge's own mix and every bug in place. Anything studying the firmware should pass `--as-is`,
-and every research script in this repository does.
+**Two things are changed by default.** The chord dropout is repaired (see "The chord dropout"
+below; `--keep-chord-dropout` leaves it in), and the obbligato is ducked under the melody by 6 dB,
+as the PCS-30 does it, instead of the cartridge's 0 to 1.5 dB (see "The obbligato duck";
+`--duck cartridge` keeps the cartridge's). **`--as-is`** gives the machine untouched - the
+cartridge's own mix and duck, and every bug in place. Anything studying the firmware should pass
+`--as-is`, and every research script in this repository does.
 
 Neither program understands the Playcard format. That is the point: the card is
 decoded by Yamaha's own firmware, exactly as a keyboard would decode it, so the
@@ -102,8 +104,8 @@ The three mixes:
   writes and fewer key-ons. The obbligato stays, as a second line.
 * **`cartridge`**: the UPA-01's own 30 across the board, by touching nothing -
   the panel is left exactly as the firmware sets it. Use it whenever the
-  question is what the machine does - or `--as-is`, which is this and the
-  chord dropout left in too.
+  question is what the machine does - or `--as-is`, which is this with the
+  chord dropout and the cartridge's own duck left in too.
 
 `--volume` sets one part outright and wins over whatever the mix chose, in
 either order. The program says what it did:
@@ -499,6 +501,61 @@ The program says when it has stepped in:
 
 `--keep-chord-dropout` turns the repair off; `--as-is` turns it off along with
 the mix.
+
+## The obbligato duck
+
+A card says where the melody comes in and where it gives up the tune: `0x14`
+ducks the obbligato under it, `0x13` brings it back (see "The control opcodes
+duck the obbligato under the melody" in `../playcard-format.md`). The two
+machines whose code can be read do very different things with that.
+
+**The UPA-01 barely ducks at all.** Its handlers (`0x5FB2`, `0x5F9D`) set the
+obbligato's level byte `0xD324` to `0x60` or `0x80`, and the only thing that
+reads it, `0x5E2F`, sends it with each obbligato note to the SFG-01 as a kind
+of key velocity. How much a note then softens depends on the voice. Measured on
+Love Theme with each obbligato voice in turn, at five panel volumes:
+
+| obbligato voice | the duck |
+|---|---|
+| flute, piano, guitar | 2 TL steps, 1.5 dB |
+| oboe, strings, brass, clarinet | 1 step, 0.75 dB |
+| **harpsichord** | **nothing**, at any volume |
+
+So on a card like Love Theme, whose harpsichord obbligato should drop back when
+the guitar melody enters, nothing happens at all.
+
+**The PCS-30 ducks by 6 dB, for every voice.** `0x2ACA` sets its duck flag on
+`0x14` and `0x2ABD` clears it on `0x13`; `0x1E48` copies the flag across, and
+at every obbligato note `0x0F77` adds `0x10` to the level byte it writes to its
+sound chip's register `0x8C` plus the channel. The chip is a YM2142, which is
+undocumented, but it takes the same registers as the YM2163, whose datasheet
+survives: at `8CH`-`8FH`, bits 5 and 4 are the volume, `00` 0 dB, `01` −6 dB,
+`10` −12 dB and `11` off, and bits 3-0 choose which of four output pins - four
+analogue filters - the channel goes to. Every voice in the PCS-30's own table
+at `0x2CFC` decodes cleanly with that layout, so `0x10` is one step of volume:
+**exactly 6 dB**. (The PCS-30 also always plays one obbligato voice, probably
+the flute, a step down, and two of its voices start at −6 dB and duck to −12.)
+
+**So by default this program ducks as the PCS-30 does.** When the cartridge
+takes a `0x14`, `0xD324` goes straight back to full, so its own voice-dependent
+duck does not happen, and until the `0x13` every carrier's total level on the
+obbligato's channel (FM channel 2) is written 8 steps higher - 8 × 0.75 dB,
+6 dB. The cartridge writes those levels at each obbligato note, so the duck
+takes hold from the next obbligato note, which is what the PCS-30 does too.
+Checked on a piano obbligato, whose voice has two carriers: both move by
+exactly 8 on every ducked note, the modulators never move, and nothing changes
+outside the duck.
+
+```
+  obbligato ducked 6.00 dB, 2 times
+```
+
+| option | the duck |
+|---|---|
+| (none) | 6 dB, the PCS-30's |
+| `--duck DB` | DB instead, in 0.75 dB steps; `--duck 0` is no duck at all |
+| `--duck cartridge` | the cartridge's own, 0 to 1.5 dB by voice |
+| `--as-is` | the cartridge's own, along with its mix and its bugs |
 
 ## Finding things: where the CPU is, and what is in RAM
 
