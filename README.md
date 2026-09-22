@@ -256,6 +256,12 @@ python pcs30_extract.py
 python pcs30_synth.py mycard.bin -o mycard.wav
 ```
 
+`--arranger upa` is a machine that never existed: this keyboard's voices, filters and drums playing the **cartridge's** accompaniment patterns, with the corrections `upa_arrange.py` makes. It also drops two of the keyboard's limits, because nothing written today needs them &mdash; it plays the card's own tempo rather than the nearest of the keyboard's 32, and its chord part is a whole chord rather than the single line four channels allowed.
+
+```bash
+python pcs30_synth.py mycard.bin --arranger upa -o mycard.wav
+```
+
 **`pcs30_rhythm.py`** prints the accompaniment patterns over any chord you name; **`pcs30_drums.py`** prints the drum patterns and the six fills; **`pcs30_demo.py`** pulls out the three demo tunes stored in the keyboard's ROM.
 
 ```bash

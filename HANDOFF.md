@@ -952,6 +952,20 @@ is in `pcs30-sound.md`. The user's recordings are in `tmp/PCS-30 Recordings/` (n
 renders go to `tmp/pcs30-synth/`. **Set aside on 2026-09-22** with those items open; all of them are
 balance, all by ear, so resuming means listening to a render beside a recording of the same card.
 
+**A machine that never existed: the keyboard's sound with the cartridge's arrangement
+(2026-09-22).** `pcs30_synth.py --arranger upa` takes its notes from `upa_arrange.py` instead of
+`pcs30_arrange.py --chip`, so a card is played by the PCS-30's voices, filters, drums and
+snare-over-cymbal rule, from the UPA-01's own accompaniment patterns with that tool's corrections.
+Three departures from the real keyboard are deliberate and marked in the docstring: **the card's own
+tempo** rather than the keyboard's 32-entry table, because a 120 bpm card really does play at 127.4
+there and that quirk is not wanted here; **no four-note limit** - the keyboard has four channels
+playing one note each and its chord part is a single line, while the cartridge's is a whole chord, so
+`slots()` deals a part into as many channels as it needs and `PCS30_CHORD_DB` (ear-set, -5 dB) takes
+that part down now one line has become four; and **the organ stays where the card puts it**, since
+only the PCS-30 arranger's `--chip` output needs its octave taken back out. `DRUM_BIT` now accepts
+both arrangers' GM notes, the conga and the claves being the same latin drum on this keyboard.
+Renders for listening go to `tmp/upa-pcs30/`.
+
 **The obbligato duck (2026-09-22).** On the UPA-01 the duck is velocity: `0xD324` (`0x60` ducked,
 `0x80` full) rides with each obbligato note from `0x5E2F`, and the SFG voice decides the effect -
 1-2 TL steps for most voices, **zero for the harpsichord** (Love Theme: no audible duck at all). The

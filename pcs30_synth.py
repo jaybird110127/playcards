@@ -2,8 +2,9 @@
 """A Playcard played the way a Yamaha PCS-30 would sound.  WORK IN PROGRESS.
 
     python pcs30_synth.py card.bin [-o card.wav]
+    python pcs30_synth.py card.bin --arranger upa      # the cartridge's patterns
 
-A card with a side B is joined by pcs30_arrange.py; give the side A.
+A card with a side B is joined by the arranger; give the side A.
 
 THIS IS A PROTOTYPE, and it does not yet sound like the keyboard.  It has been
 through five rounds of listening against recordings of a real PCS-30, and the
@@ -39,9 +40,33 @@ datasheet's.  Three can be changed from the environment while experimenting:
     PCS30_KICK_DB   the kick drum, dB on top of DRUM_GAIN (default 0)
     PCS30_OUT_LP    a one-pole roll-off after the mix, Hz (default 0, off: the
                     pins' measured filters already include the whole chain)
+    PCS30_CHORD_DB  the chord part with --arranger upa, dB (default -5, because
+                    one line has become three or four notes)
 
-Needs numpy and scipy, and what pcs30_arrange.py needs: the pattern tables
-made once by pcs30_extract.py from your own PCS-30 ROM.
+THE KEYBOARD'S SOUND WITH THE CARTRIDGE'S ARRANGEMENT
+
+`--arranger upa` takes the notes from `upa_arrange.py` instead: the UPA-01's own
+accompaniment patterns, with the corrections that tool makes - chords on the beat,
+a fill in the rhythm's feel, bossa-nova's last chord on the clave, notes held -
+played by this keyboard's voices, filters and drums. It is a machine that never
+existed, and three differences from the real PCS-30 are deliberate:
+
+  * **the card's own tempo.** The keyboard rounds every card to one of its 32
+    tempos and so plays most of them 1.5 to 6% fast; a 120 bpm card really does
+    play at 127.4 there. With the cartridge's arrangement that quirk is not
+    wanted, so a 120 bpm card plays at 120.
+  * **no four-note limit.** The real keyboard has four channels and one note
+    each, and its chord part is a single line. The cartridge's is a whole chord,
+    so the chord part is dealt into as many channels as it needs - see slots().
+    PCS30_CHORD_DB takes that part down, by ear, since one line has become four.
+  * **the organ stays where the card puts it.** `pcs30_arrange.py --chip` needs
+    its octave taken back out and `upa_arrange.py` does not.
+
+Everything else is the keyboard: the same waveforms, envelopes, voice table,
+vibrato, output-pin filters, drums and the snare-over-cymbal rule.
+
+Needs numpy and scipy, and the pattern tables: `pcs30_extract.py` from your own
+PCS-30 ROM, and `upa_extract.py` from a cartridge ROM for `--arranger upa`.
 """
 
 import argparse
@@ -113,6 +138,10 @@ PIN_DB = {1: 0.0, 2: -4.0, 3: 4.0, 4: 0.0}
 # Tuned against the recordings' long-term spectrum, not measured directly:
 # how loud the bass part sits, and a gentle roll-off after the mix.
 BASS_DB = float(os.environ.get('PCS30_BASS_DB', '0'))
+# The keyboard's chord part is ONE note; the cartridge's is three or four, so
+# playing them all at full level makes that part much louder than the machine
+# ever was.  Set by ear, and only used with --arranger upa.
+CHORD_DB = float(os.environ.get('PCS30_CHORD_DB', '-5'))
 OUT_LOWPASS = float(os.environ.get('PCS30_OUT_LP', '0'))
 KICK_DB = float(os.environ.get('PCS30_KICK_DB', '0'))
 # Each drum's level.  Matched to the recordings' peak-to-music ratio and then
@@ -224,35 +253,68 @@ def drum(bit, rng):
     return sig / (np.abs(sig).max() + 1e-9) * env * DRUM_GAIN[bit]
 
 
-DRUM_BIT = {36: 0, 75: 1, 38: 2, 46: 3, 42: 4}          # pcs30_arrange's GM notes
+# Both arrangers' GM drum notes.  75 is pcs30_arrange's claves and 63 is
+# upa_arrange's conga; on this keyboard they are the same latin drum.
+DRUM_BIT = {36: 0, 75: 1, 63: 1, 38: 2, 46: 3, 42: 4}
 
 
 # ---------------------------------------------------------------- the card
-def render(cards, out, duck_db=-6.0):
+def slots(ns):
+    """Deal one part's notes into monophonic slots, so a chord can sound.
+
+    A real PCS-30 channel plays one note at a time, and the render carries its
+    level and its oscillator from note to note on that assumption.  The
+    cartridge's chord part is three or four notes at once, and nothing written
+    today has to be limited to the keyboard's four channels - so each note goes
+    to the first slot whose last note has finished, and every slot is then one
+    well-behaved chip channel.  A part that never overlaps itself, which is every
+    part the PCS-30's own arranger writes, comes back as a single slot.
+    """
+    out = []
+    for n in sorted(ns):
+        for sl in out:
+            if sl[-1][0] + sl[-1][4] <= n[0]:
+                sl.append(n)
+                break
+        else:
+            out.append([n])
+    return out
+
+
+def render(cards, out, duck_db=-6.0, arranger='pcs30'):
     h = P.parse_card(P.tobits(P.check_card(cards[0])))
     field = P.TEMPO.index(h['tempo'])
-    played = 10070.0 / (TEMPO_TABLE[field] + 1)
+    # The keyboard plays every card at one of its own 32 tempos, a little fast.
+    # With the cartridge's arrangement that quirk is not wanted: the card's own
+    # metronome mark is what the music was written at, and neither machine's
+    # rounding belongs in a render made today.
+    played = h['tempo'] if arranger == 'upa' else 10070.0 / (TEMPO_TABLE[field] + 1)
     rhythm = h['rhythm'] - 1
     chord_entry = (CHORD_ENTRY_ALT if h.get('f3') else CHORD_ENTRY)[rhythm]
     entries = {0: MELODY_ENTRY[h['field4'] - 1], 1: OBBLIGATO_ENTRY[h['field6'] - 1],
                2: BASS_ENTRY, 3: chord_entry}
     extra = {0: 0.0, 1: -6.0 if entries[1] == 7 else 0.0, 2: BASS_DB,
-             3: -6.0 if chord_entry == 3 else 0.0}
+             3: (-6.0 if chord_entry == 3 else 0.0) + (CHORD_DB if arranger == 'upa' else 0.0)}
     sus_card = bool(h.get('bit1'))            # the header's sustain bit
     # pcs30_arrange raises the organ an octave, because General MIDI synths
     # voice it low; the PCS-30 plays it where the card says.  (Its piccolo
     # octave is what the real keyboards do, and stays.)
     octave = {0: -12 if P.voice(P.MELODY_VOICE, h['field4']) == 'organ' else 0,
               1: 0, 2: 0, 3: 0}
+    if arranger == 'upa':
+        octave[0] = 0                 # upa_arrange leaves the organ where the card puts it
 
     with tempfile.TemporaryDirectory() as tmp:
         mid = os.path.join(tmp, 'card.mid')
         # --chip: the parts as the keyboard's own channels play them, not
         # rearranged for a General MIDI synth.
-        r = subprocess.run([sys.executable, os.path.join(HERE, 'pcs30_arrange.py')] + cards
-                           + ['-o', mid, '--chip'], capture_output=True, text=True)
+        tool = 'upa_arrange.py' if arranger == 'upa' else 'pcs30_arrange.py'
+        args = [] if arranger == 'upa' else ['--chip']
+        r = subprocess.run([sys.executable, os.path.join(HERE, tool)] + cards
+                           + ['-o', mid] + args, capture_output=True, text=True)
         if not os.path.exists(mid):
-            raise P.Missing('pcs30_arrange.py made no arrangement:\n' + (r.stdout + r.stderr).strip())
+            raise P.Missing('%s made no arrangement:\n%s'
+                            % (tool, (r.stdout + r.stderr).strip()))
         song = M.read_midi(mid)
     sec = 60.0 / (song['tpq'] * played)             # the PCS-30's tempo, not the card's
     notes = song['notes']
@@ -291,20 +353,21 @@ def render(cards, out, duck_db=-6.0):
         # oscillator carry on into the next note when it follows at once; see
         # envelope().  A new note cuts the one before: one channel, one note.
         shift = octave[ch]
-        level, phase_ = 0.0, 0.0
-        for i, (tick, _, pitch, vel, ticks, _) in enumerate(ns):
-            s0 = int(tick * sec * FS)
-            gate = int(ticks * sec * FS)
-            nxt = int(ns[i + 1][0] * sec * FS) if i + 1 < len(ns) else len(drums)
-            total = max(1, min(nxt - s0, gate + int(1.3 * FS), len(drums) - s0))
-            ducked = ch == 1 and vel < 90                  # pcs30_arrange ducks by velocity
-            sig, pins, end_level, end_phase = tone(
-                pitch + shift, entries[ch], min(gate, total), total, sus_card,
-                extra[ch] + (duck_db if ducked else 0.0), level, phase_)
-            for p in pins:
-                buses[p][s0:s0 + total] += sig
-            follows = total == nxt - s0                    # still sounding when the next comes
-            level, phase_ = (end_level, end_phase) if follows else (0.0, 0.0)
+        for sl in slots(ns):
+            level, phase_ = 0.0, 0.0
+            for i, (tick, _, pitch, vel, ticks, _) in enumerate(sl):
+                s0 = int(tick * sec * FS)
+                gate = int(ticks * sec * FS)
+                nxt = int(sl[i + 1][0] * sec * FS) if i + 1 < len(sl) else len(drums)
+                total = max(1, min(nxt - s0, gate + int(1.3 * FS), len(drums) - s0))
+                ducked = ch == 1 and vel < 90              # both arrangers duck by velocity
+                sig, pins, end_level, end_phase = tone(
+                    pitch + shift, entries[ch], min(gate, total), total, sus_card,
+                    extra[ch] + (duck_db if ducked else 0.0), level, phase_)
+                for p in pins:
+                    buses[p][s0:s0 + total] += sig
+                follows = total == nxt - s0                # still sounding when the next comes
+                level, phase_ = (end_level, end_phase) if follows else (0.0, 0.0)
     mix = drums.copy()
     for p, (order, corner) in PINS.items():
         mix += sosfilt(butter(order, corner, fs=FS, output='sos'), buses[p]) * 10 ** (PIN_DB[p] / 20)
@@ -318,21 +381,28 @@ def render(cards, out, duck_db=-6.0):
         w.setsampwidth(2)
         w.setframerate(RATE)
         w.writeframes((out_audio * 32767).astype('<i2').tobytes())
-    P.say('%s: %.1f s at %.1f bpm (the card says %d); melody entry %d, obbligato %d, '
-          'chord %d, bass %d -> %s' % (os.path.basename(cards[0]), len(out_audio) / RATE,
-                                       played, h['tempo'], entries[0], entries[1],
-                                       chord_entry, BASS_ENTRY, out), prefix='')
+    P.say("%s: %.1f s at %.1f bpm (the card says %d); %s's arrangement; melody entry "
+          '%d, obbligato %d, chord %d, bass %d -> %s'
+          % (os.path.basename(cards[0]), len(out_audio) / RATE, played, h['tempo'],
+             'the cartridge' if arranger == 'upa' else 'the PCS-30',
+             entries[0], entries[1], chord_entry, BASS_ENTRY, out), prefix='')
 
 
 def main():
     ap = argparse.ArgumentParser(description='A Playcard as a PCS-30 would sound (a prototype).')
     ap.add_argument('cards', nargs=1, help='the card')
     ap.add_argument('-o', '--out', help='the .wav to write (default: beside the card)')
+    ap.add_argument('--arranger', choices=('pcs30', 'upa'), default='pcs30',
+                    help="whose accompaniment to play: the PCS-30's own (default), or "
+                         "the UPA-01 cartridge's, corrected by upa_arrange.py - this "
+                         "keyboard's sound, the cartridge's patterns, and no four-note "
+                         'limit')
     a = ap.parse_args()
     for c in a.cards:
         P.check_card(c)
-    out = a.out or os.path.splitext(a.cards[0])[0] + '.pcs30.wav'
-    render(a.cards, out)
+    out = a.out or os.path.splitext(a.cards[0])[0] + (
+        '.upa-pcs30.wav' if a.arranger == 'upa' else '.pcs30.wav')
+    render(a.cards, out, arranger=a.arranger)
 
 
 if __name__ == '__main__':
