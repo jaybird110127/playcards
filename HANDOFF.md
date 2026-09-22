@@ -895,8 +895,14 @@ tempo and transpose knobs are sprites, which is why `--screen` never showed them
 
 **At the cartridge's own levels the melody is quiet**: measured alone and while sounding, melody and
 obbligato sit about 9 dB under the bass and drums and 6 dB under the chords, and each volume step is
-1.1 dB. `--mix lead` (40/34/28/26/26) brings it forward, and is `csrc/playcard`'s **default** since
-2026-09-21. `--mix karaoke` is lead with the melody muted: volume 0 is not silence (the carrier TL
+1.1 dB. `--mix lead` brings it forward, and is `csrc/playcard`'s **default** since 2026-09-21. It
+began as a fixed 40/34/28/26/26 and now **sets melody and obbligato by voice**: the voices differ by
+up to 8.6 LU at one setting (oboe melody loudest, piano quietest), so a fixed mix left a violin 9 LU
+over a brass obbligato. `csrc/voice_levels.py` measured every voice (BS.1770 loudness, part alone,
+eight re-headed cards); the firmware holds the card's voices at `0xD2FB` and `0xD320` (`0x80` plus
+the field) by the time the tempo lands at `0x4316`, and lead aims the melody 4 LU and the obbligato
+1 LU over the accompaniment. On 55 unseen voice pairs melody-over-obbligato came out +3.3 mean, sd
+1.1, against a target of 3. `--mix karaoke` is lead with the melody muted: volume 0 is not silence (the carrier TL
 only goes to `0x4F`, about 45 dB down), so key-ons on channels 0 and 1 - always the melody, doubled,
 on all 23 cards checked - are turned into key-offs. `--mix cartridge` imposes nothing at all, and
 **every research harness passes it** (`key_against_firmware.py`, `sweep_block2.py`,

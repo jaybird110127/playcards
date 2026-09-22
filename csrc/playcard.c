@@ -58,6 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
 #include "z80.h"
 
 #define CLOCK       3579545.0       /* the Z80's and the YM2151's clock */
@@ -170,6 +171,9 @@ typedef struct {
     int want[NPANEL];              /* panel settings to impose, or -1 */
     int tempo_rel, tempo_delta;    /* or move the card's own tempo, in steps */
     int mute_melody;               /* --mix karaoke: no key-on on channels 0-1 */
+    int mix;                       /* MIX_CARTRIDGE, MIX_LEAD or MIX_KARAOKE */
+    int quiet;
+    int shown_voices;              /* the voice pair last reported, or -1 */
 
     unsigned long *pchist;         /* one count an address, or NULL */
     unsigned long pcfrom;          /* not before this cycle */
@@ -444,17 +448,124 @@ static void poke(msx *m, uint16_t a, uint8_t v)
     m->ram[a] = v;
 }
 
+/* --mix NAME.
+ *
+ * "cartridge" touches nothing: the UPA-01's own 30 across the board, and the
+ * capture is the machine untouched.  Anything that studies the firmware asks
+ * for it.
+ *
+ * "lead", the default, balances the parts BY VOICE.  At one panel setting the
+ * voices are far from equally loud - the oboe melody is 8.6 dB louder than the
+ * piano - so no fixed set of volumes can do it: a violin at 40 over a brass
+ * obbligato at 34 buries the obbligato 9 dB down.  Instead the card's own voice
+ * numbers are read as the header is decoded, and the melody and obbligato set
+ * from the table below so that, in loudness,
+ *
+ *     melody    = accompaniment + LEAD_MELODY_LU
+ *     obbligato = accompaniment + LEAD_OBBLIGATO_LU
+ *
+ * the melody on top and the obbligato just under it, both over the chords,
+ * bass and drums.  Where a quiet voice cannot reach its level at 40, the
+ * accompaniment and obbligato come down instead, keeping the balance.
+ *
+ * "karaoke" is lead with the melody cut.
+ *
+ * An explicit --volume always wins, in any order, over what a mix chooses. */
+enum { MIX_CARTRIDGE, MIX_LEAD, MIX_KARAOKE };
+
+#define LEAD_MELODY_LU     4.0
+#define LEAD_OBBLIGATO_LU  1.0
+#define LU_PER_STEP        1.13    /* every voice, above volume 20 */
+#define ACC_CHORD 28               /* the accompaniment the targets are over */
+#define ACC_BASS  26
+#define ACC_DRUMS 26
+#define ACC_LUFS  (-37.9)          /* ...measured, all three together */
+#define VOICE_MELODY    0xD2FB     /* 0x80 | the card's melody voice, 1-10 */
+#define VOICE_OBBLIGATO 0xD320     /* 0x80 | the obbligato voice, 1-8 */
+
+/* Integrated loudness (BS.1770: K-weighted, gated, so rests do not count) of
+ * each voice playing its part alone at panel volume 30, LUFS on this program's
+ * output.  The mean over eight cards re-headed to each voice in turn; a voice
+ * varies by 1-2 LU from card to card, the piano by up to 4.  Index 0 - a voice
+ * field out of range - is the mean. */
+static const char *MELODY_VOICE[11] = {"?", "piccolo", "organ", "violin",
+    "trumpet", "oboe", "clarinet", "harpsichord", "piano", "vibraphone", "guitar"};
+static const double MELODY_LUFS[11] = {-42.5,
+    -40.2, -43.1, -41.9, -41.9, -39.1, -40.4, -44.1, -47.7, -46.1, -40.9};
+static const char *OBBLIGATO_VOICE[9] = {"?", "oboe", "flute", "strings",
+    "brass", "clarinet", "piano", "harpsichord", "guitar"};
+static const double OBBLIGATO_LUFS[9] = {-42.7,
+    -39.8, -39.5, -43.3, -44.1, -40.8, -48.3, -44.3, -41.9};
+
+static int parse_mix(const char *name, int *mix)
+{
+    if (!strcmp(name, "cartridge")) *mix = MIX_CARTRIDGE;
+    else if (!strcmp(name, "lead")) *mix = MIX_LEAD;
+    else if (!strcmp(name, "karaoke")) *mix = MIX_KARAOKE;
+    else {
+        fprintf(stderr, "playcard: --mix is lead, karaoke or cartridge\n");
+        return 0;
+    }
+    return 1;
+}
+
+static int clamp_volume(double v)
+{
+    int n = (int)floor(v + 0.5);
+    return n < 0 ? 0 : n > 40 ? 40 : n;
+}
+
+/* The five volumes "lead" chooses for these two voices. */
+static void balance(int mel, int obb, int *vol)
+{
+    double vm, vo, over;
+    if (mel < 1 || mel > 10) mel = 0;
+    if (obb < 1 || obb > 8) obb = 0;
+    vm = 30 + (ACC_LUFS + LEAD_MELODY_LU - MELODY_LUFS[mel]) / LU_PER_STEP;
+    vo = 30 + (ACC_LUFS + LEAD_OBBLIGATO_LU - OBBLIGATO_LUFS[obb]) / LU_PER_STEP;
+    over = vm > vo ? vm - 40 : vo - 40;
+    if (over < 0)
+        over = 0;
+    vol[0] = clamp_volume(vm - over);
+    vol[1] = clamp_volume(vo - over);
+    vol[2] = clamp_volume(ACC_CHORD - over);
+    vol[3] = clamp_volume(ACC_BASS - over);
+    vol[4] = clamp_volume(ACC_DRUMS - over);
+}
+
 /* Put the requested panel settings into the wanted block; the cartridge's own
  * sync routine does the rest.  Tempo is left alone here unless asked for, and
  * a relative tempo is only meaningful once the card has set its own. */
 static void impose_panel(msx *m, int with_tempo)
 {
-    int i;
+    int i, vol[5] = {-1, -1, -1, -1, -1};
+    /* The voices are decoded just before the tempo lands, so a mix that
+     * balances by voice is applied there, with the tempo. */
+    if (with_tempo && m->mix != MIX_CARTRIDGE) {
+        int mel = m->mem[VOICE_MELODY] & 0x0F, obb = m->mem[VOICE_OBBLIGATO] & 0x0F;
+        balance(mel, obb, vol);
+        if (m->mix == MIX_KARAOKE)
+            vol[0] = 0;
+        for (i = 0; i < 5; i++)
+            if (m->want[i] >= 0)
+                vol[i] = m->want[i];
+        if (!m->quiet && m->shown_voices != mel * 16 + obb) {
+            printf("  %s mix for %s melody, %s obbligato: %d %d, chord %d bass %d "
+                   "rhythm %d\n", m->mix == MIX_KARAOKE ? "karaoke" : "lead",
+                   MELODY_VOICE[mel <= 10 ? mel : 0], OBBLIGATO_VOICE[obb <= 8 ? obb : 0],
+                   vol[0], vol[1], vol[2], vol[3], vol[4]);
+            m->shown_voices = mel * 16 + obb;
+        }
+    }
+    for (i = 0; i < 5; i++)
+        if (vol[i] < 0)
+            vol[i] = m->want[i];
     for (i = 0; i < NPANEL; i++) {
+        int v = i < 5 ? vol[i] : m->want[i];
         if (i == 5 && !with_tempo)
             continue;
-        if (m->want[i] >= 0)
-            poke(m, (uint16_t)(PANEL_WANT + i), (uint8_t)m->want[i]);
+        if (v >= 0)
+            poke(m, (uint16_t)(PANEL_WANT + i), (uint8_t)v);
     }
     if (with_tempo && m->tempo_rel) {
         int t = m->mem[PANEL_TEMPO] + m->tempo_delta;
@@ -466,7 +577,7 @@ static void impose_panel(msx *m, int with_tempo)
      * own tempo would stand.  So mark each imposed live value stale, and the
      * firmware re-applies all of them on its next pass. */
     for (i = 0; i < NPANEL; i++) {
-        int asked = m->want[i] >= 0 || (i == 5 && m->tempo_rel);
+        int asked = (i < 5 ? vol[i] : m->want[i]) >= 0 || (i == 5 && m->tempo_rel);
         if (asked && (i != 5 || with_tempo))
             poke(m, (uint16_t)(PANEL_LIVE + i), 0xFF);
     }
@@ -757,39 +868,6 @@ bad:
 
 /* --tempo 120 is absolute; --tempo +8 or -8 moves the card's own.  Either way
  * in bpm, landing on the cartridge's grid of 4. */
-/* --mix NAME: a whole set of volumes at once.  Measured on real cards, each
- * part alone, level while it sounds: at the cartridge's own 30-across-the-
- * board the melody and obbligato sit about 9 dB under the bass and drums and
- * 6 dB under the chords, and each volume step is 1.1 dB.  "lead" brings the
- * melody to the front and the rhythm section back.  No fixed mix suits every
- * card, because each card picks its own voices and some pairings are lopsided
- * - on 9 to 5 a piano melody against a brass obbligato only draws level - so
- * this is a starting point, and a --volume after it adjusts one part.  "lead"
- * is the default, for listening; anything that studies what the machine does
- * asks for "cartridge". */
-static const struct { const char *name; int v[5]; } MIXES[] = {
-    /* The UPA-01's own 30 across the board - by leaving the panel alone
-     * altogether, so that the capture is the machine untouched. */
-    {"cartridge", {-1, -1, -1, -1, -1}},
-    {"lead",      {40, 34, 28, 26, 26}},  /* the default */
-    {"karaoke",   { 0, 34, 28, 26, 26}},  /* lead with no melody */
-};
-
-static int parse_mix(const char *name, int *want, int *mute_melody)
-{
-    int k, i;
-    for (k = 0; k < (int)(sizeof MIXES / sizeof MIXES[0]); k++) {
-        if (!strcmp(name, MIXES[k].name)) {
-            for (i = 0; i < 5; i++)
-                want[i] = MIXES[k].v[i];
-            *mute_melody = !strcmp(name, "karaoke");
-            return 1;
-        }
-    }
-    fprintf(stderr, "playcard: --mix is lead, karaoke or cartridge\n");
-    return 0;
-}
-
 static int parse_tempo(const char *arg, int *want, int *rel, int *delta)
 {
     double v = atof(arg);
@@ -831,7 +909,7 @@ int main(int argc, char **argv)
     const char *screenout = NULL;
     const char *keys_before = NULL, *keys_after = NULL;
     int want[NPANEL] = {-1, -1, -1, -1, -1, -1, -1};
-    int tempo_rel = 0, tempo_delta = 0, mute_melody = 0;
+    int tempo_rel = 0, tempo_delta = 0, mix = MIX_LEAD;
     double screenat = -1.0;        /* < 0 means "when the card ends" */
     const char *psgout = NULL;
     const char *watchout = NULL;
@@ -863,7 +941,6 @@ int main(int argc, char **argv)
             if (pf) { fclose(pf); romdir = "../Roms"; }
         }
     }
-    parse_mix("lead", want, &mute_melody);       /* the default mix; see MIXES */
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
         else if (!strcmp(argv[i], "--seconds") && i + 1 < argc) seconds = atof(argv[++i]);
@@ -881,7 +958,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--screen-at") && i + 1 < argc) screenat = atof(argv[++i]);
         else if (!strcmp(argv[i], "--keys") && i + 1 < argc) keys_before = argv[++i];
         else if (!strcmp(argv[i], "--mix") && i + 1 < argc) {
-            if (!parse_mix(argv[++i], want, &mute_melody)) return 2;
+            if (!parse_mix(argv[++i], &mix)) return 2;
         }
         else if (!strcmp(argv[i], "--volume") && i + 1 < argc) {
             if (!parse_volume(argv[++i], want)) return 2;
@@ -921,11 +998,12 @@ int main(int argc, char **argv)
                 "   --quiet         no progress output\n"
                 "   --screen F      write the cartridge's screen, as text, to F\n"
                 "   --screen-at S   dump it S seconds after playback starts\n"
-                "   --mix NAME      lead (the default: melody on top, the accompaniment\n"
-                "                   beneath it), karaoke (lead with no melody), or\n"
+                "   --mix NAME      lead (the default: melody just over the obbligato,\n"
+                "                   both over the accompaniment, set by voice),\n"
+                "                   karaoke (lead with no melody), or\n"
                 "                   cartridge (the UPA-01's own 30s, panel untouched)\n"
                 "   --volume P=N    melody, obbligato, chord, bass, rhythm or all: 0-40,\n"
-                "                   on top of --mix; each step is about 1.1 dB\n"
+                "                   overrides the mix; each step is 1.13 dB\n"
                 "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
                 "                   the card's own tempo instead\n"
                 "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
@@ -950,11 +1028,12 @@ int main(int argc, char **argv)
             "   --roms DIR      where the ROM images are\n"
             "   --screen F      write the cartridge's screen, as text, to F\n"
             "   --screen-at S   dump it S seconds after playback starts\n"
-            "   --mix NAME      lead (the default: melody on top, the accompaniment\n"
-            "                   beneath it), karaoke (lead with no melody), or\n"
+            "   --mix NAME      lead (the default: melody just over the obbligato,\n"
+            "                   both over the accompaniment, set by voice),\n"
+            "                   karaoke (lead with no melody), or\n"
             "                   cartridge (the UPA-01's own 30s, panel untouched)\n"
             "   --volume P=N    melody, obbligato, chord, bass, rhythm or all: 0-40,\n"
-            "                   on top of --mix; each step is about 1.1 dB\n"
+            "                   overrides the mix; each step is 1.13 dB\n"
             "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
             "                   the card's own tempo instead\n"
             "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
@@ -974,7 +1053,10 @@ int main(int argc, char **argv)
     if (!machine_init(m, romdir, with_fm)) return 1;
     memcpy(m->want, want, sizeof want);
     m->tempo_rel = tempo_rel;
-    m->mute_melody = mute_melody;
+    m->mix = mix;
+    m->mute_melody = mix == MIX_KARAOKE;
+    m->quiet = quiet;
+    m->shown_voices = -1;
     m->tempo_delta = tempo_delta;
 
     for (i = 0; i < nwatch; i++)
@@ -1069,8 +1151,9 @@ int main(int argc, char **argv)
             if (m->tempo_rel)
                 printf("%s tempo %+d bpm on the card's own", any++ ? "" : "  panel:",
                        4 * m->tempo_delta);
-            if (m->mute_melody)
-                printf("%s melody muted (karaoke)", any++ ? "," : "  panel:");
+            if (m->mix != MIX_CARTRIDGE)
+                printf("%s %s mix, balanced by voice once the header is read",
+                       any++ ? "," : "  panel:", m->mix == MIX_KARAOKE ? "karaoke" : "lead");
             if (any)
                 printf("\n");
         }

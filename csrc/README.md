@@ -77,15 +77,17 @@ the command line and the firmware applies it exactly as if you had typed:
 
 | option | what it sets | range | the cartridge starts at |
 |---|---|---|---|
-| `--mix NAME` | all five at once: `lead`, `karaoke` or `cartridge` (below) | | this program's default is `lead` |
+| `--mix NAME` | all five at once: `lead`, `karaoke` or `cartridge` (below) | | this program's default is `lead`, set by voice |
 | `--volume P=N` | one part's level: `melody`, `obbligato`, `chord`, `bass`, `rhythm`, or `all` | 0 to 40 | 30 |
 | `--tempo BPM` | the tempo, on the cartridge's grid of 4; a leading `+` or `-` moves the card's own instead | 40 to 200 | the card's |
 | `--transpose S` | the whole arrangement, melody to bass; the drums are untouched | −5 to +6 | 0 |
 
 The three mixes:
 
-* **`lead`**, the default: 40, 34, 28, 26, 26 - the melody on top and the
-  accompaniment balanced beneath it. Why, below.
+* **`lead`**, the default: the melody a little over the obbligato, and both
+  over the chords, bass and drums - **set card by card from the voices the card
+  uses**, because the voices themselves are not equally loud. Why and how,
+  below.
 * **`karaoke`**: `lead` with the melody gone, to sing or play along with.
   Volume 0 is not silence on this cartridge - the melody's carrier only drops
   to about 45 dB down, faint but there in a quiet passage - so the melody's
@@ -98,11 +100,12 @@ The three mixes:
   question is what the machine does; every research script in this repository
   passes it.
 
-`--volume` after `--mix` adjusts one part of it. The line the program prints
-says what it imposed:
+`--volume` sets one part outright and wins over whatever the mix chose, in
+either order. The program says what it did:
 
 ```
-  panel: melody 40 obbligato 34 chord 28 bass 26 rhythm 26
+  panel: lead mix, balanced by voice once the header is read
+  lead mix for violin melody, flute obbligato: 37 32, chord 28 bass 26 rhythm 26
 ```
 
 ### What the keys on the real panel do
@@ -127,28 +130,64 @@ The levels, the tempo and the transpose are drawn as **sprites** sliding along
 bars, which is why a text dump of the screen (`--screen`) shows the bars but
 never the knobs.
 
-### Why the lead mix exists
+### Why the lead mix goes by voice
 
-Measured each part alone, level while it sounds, at the cartridge's own 30
-across the board: **the melody and obbligato sit about 9 dB under the bass and
-drums, and 6 dB under the chords.** On Lady Madonna the melody is 9.3 dB under
-the loudest accompaniment part; on 9 to 5, 11.8. Each volume step is 1.1 dB.
+**At the cartridge's own 30 across the board the melody is buried**: melody and
+obbligato sit about 9 dB under the bass and drums and 6 dB under the chords.
+The first `lead` was a fixed 40, 34, 28, 26, 26, and that fixed the melody but
+not the obbligato, because **the voices are not equally loud**. At one panel
+setting the oboe melody is 8.6 dB louder than the piano, so a violin at 40 over
+a brass obbligato at 34 leaves the obbligato 9 dB down, while a piano melody
+over an oboe obbligato barely comes out on top.
 
-`lead` brings the melody to the front and the rhythm section back:
+So each voice was measured. `voice_levels.py` re-heads eight cards to each voice
+in turn and plays that part alone at volume 30, measuring integrated loudness
+(BS.1770: K-weighted and gated, so rests do not count), in LUFS on this
+program's output:
 
-| card | melody | obbligato | chord | bass | rhythm |
-|---|---:|---:|---:|---:|---:|
-| Lady Madonna | **+6.6** | −0.3 | −0.7 | −0.2 | 0.0 |
-| Edelweiss | **+9.2** | +4.2 | 0.0 | −4.7 | −5.1 |
-| 9 to 5 | **+1.8** | +2.1 | 0.0 | −5.1 | −4.0 |
+| melody voice | LUFS | | obbligato voice | LUFS |
+|---|---:|---|---|---:|
+| piccolo | −40.2 | | oboe | −39.8 |
+| organ | −43.1 | | flute | −39.5 |
+| violin | −41.9 | | strings | −43.3 |
+| trumpet | −41.9 | | brass | −44.1 |
+| oboe | −39.1 | | clarinet | −40.8 |
+| clarinet | −40.4 | | piano | −48.3 |
+| harpsichord | −44.1 | | harpsichord | −44.3 |
+| piano | −47.7 | | guitar | −41.9 |
+| vibraphone | −46.1 | | | |
+| guitar | −40.9 | | | |
 
-dB against the loudest accompaniment part. **No fixed mix suits every card**,
-because each card picks its own voices and some pairings are lopsided - 9 to 5
-sets a piano melody against a brass obbligato, and the piano only just gets
-ahead. That is what `--volume` after `--mix` is for.
+A voice varies by 1 to 2 LU from card to card - the piano, whose notes decay,
+by up to 4 - so the voice, not the song, decides most of it. Loudness is linear
+in the panel volume for every voice: 1.13 LU a step, from 20 to 40. The
+accompaniment at chord 28, bass 26, rhythm 26 measures −37.9 LUFS, within
+±1.5 across cards.
 
-So `lead` is the default, for listening. A capture meant as evidence of what
-the machine does should ask for `--mix cartridge`.
+`lead` reads the card's two voice numbers as the firmware decodes the header
+(`0xD2FB` and `0xD320`, each `0x80` plus the field) and sets the melody **4 LU**
+and the obbligato **1 LU** over that accompaniment, which puts the melody 3 LU
+over the obbligato. Where a quiet voice cannot get there at 40 - the piano and
+the vibraphone as melody - the accompaniment and obbligato come down by the
+shortfall instead, so the balance holds. The targets and the table are
+constants at the top of the mix code in `playcard.c`.
+
+**Checked on 55 cards the table never saw**, one for each melody and obbligato
+pair in the corpus, each part alone at the volumes `lead` chose
+(`voice_levels.py --verify`):
+
+| | target | mean | spread (sd) | range |
+|---|---:|---:|---:|---|
+| melody over obbligato | +3 | +3.3 | 1.1 | +0.1 to +6.6 |
+| melody over accompaniment | +4 | +4.5 | 1.2 | +1.1 to +7.7 |
+| obbligato over accompaniment | +1 | +1.2 | 1.5 | −2.6 to +4.3 |
+
+The fixed mix, worked out from the same table, gave melody over obbligato
+anywhere from −1.4 to +14.7 LU across the voice pairs the corpus uses. What is left is the song: Ode to Joy's
+piano obbligato comes out level with its clarinet melody, and PC-1000 Japan
+2-00's violin 6.6 over its guitar. A meter is not an ear, either, and a bright
+voice can sound louder than it measures. For those, `--volume` sets a part
+outright.
 
 ### How it works
 

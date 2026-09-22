@@ -126,7 +126,7 @@ csrc/playcard mycard.bin -o card.fmlog --mix karaoke
 csrc/playcard mycard.bin -o card.fmlog --volume melody=40,rhythm=24 --tempo +8 --transpose -2
 ```
 
-Left to itself the cartridge plays the melody about 9 dB under the bass and drums, so by default `csrc/playcard` uses a mix of its own, `lead`, that brings the melody to the front. `--mix karaoke` is the same with no melody at all, and `--mix cartridge` leaves the panel as the UPA-01 sets it. [csrc/README.md](csrc/README.md) has the details, including what each key on the real panel does.
+Left to itself the cartridge plays the melody about 9 dB under the bass and drums, so by default `csrc/playcard` uses a mix of its own, `lead`, that brings the melody to the front, just over the obbligato. The instruments are not equally loud (the oboe is 8.6 dB louder than the piano at the same setting), so `lead` sets the levels from the instruments each card uses, from measurements of every one. `--mix karaoke` is the same with no melody at all, and `--mix cartridge` leaves the panel as the UPA-01 sets it. [csrc/README.md](csrc/README.md) has the details, including what each key on the real panel does.
 
 A 90-second card goes from image to audio in about two seconds. Neither program understands the Playcard format &mdash; Yamaha's own firmware does the decoding, so what comes out is what the machine does rather than what we think it does.
 
