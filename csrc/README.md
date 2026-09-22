@@ -183,9 +183,9 @@ pair in the corpus, each part alone at the volumes `lead` chose
 | obbligato over accompaniment | +1 | +1.2 | 1.5 | −2.6 to +4.3 |
 
 The fixed mix, worked out from the same table, gave melody over obbligato
-anywhere from −1.4 to +14.7 LU across the voice pairs the corpus uses. What is left is the song: Ode to Joy's
-piano obbligato comes out level with its clarinet melody, and PC-1000 Japan
-2-00's violin 6.6 over its guitar. A meter is not an ear, either, and a bright
+anywhere from −1.4 to +14.7 LU across the voice pairs the corpus uses. What
+is left is the song: Ode to Joy's piano obbligato comes out level with its
+clarinet melody, and PC-1000 Japan 2-00's violin 6.6 over its guitar. A meter is not an ear, either, and a bright
 voice can sound louder than it measures. For those, `--volume` sets a part
 outright.
 
