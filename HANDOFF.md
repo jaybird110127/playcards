@@ -413,7 +413,7 @@ desynchronise`, which looks like a pass.
 | `pcs30_extract.py` | Reads a PCS-30 ROM once and writes `pcs30-tables.json`: the eight pattern tables at `0x2D26` and the five drum bit-planes at `0x2BBC`. Checks the shape of both before writing, so a wrong image is caught here rather than three tools later. `--check` reports on an existing file |
 | `upa_extract.py` | Reads a UPA-01 cartridge ROM once and writes `upa-tables.json`: the ten drum patterns at `0x523B`, the six drum fills at `0x5251` and the ten accompaniment patterns at `0x5261`, with each block's flags and ticks a step. Checks the whole structure first - the pointers, that the blocks tile their region exactly, and that every drum byte's low bits are the constant 2 - so a wrong image is caught here. `--check` reports on an existing file, `--show` prints the patterns as strikes and chord tones |
 | `upa_rhythm.py` | Those patterns over any chord: `--chord G7 --rhythm march`, `--alternate` for the other pattern of each rhythm, `--fills` for the six drum fills, `--raw` for the bytes. Reads `upa-tables.json`, not the ROM. This is where the owner's export voicing lives - the chord in the octave band ending at C5, the bass root C2 up to F#2 and then G1 up to B1 - so a MIDI exporter should import it rather than invent its own |
-| `upa_arrange.py` | A card as a five-part MIDI arrangement using the CARTRIDGE's accompaniment: melody, obbligato, bass, chord, drums on channel 10. `--all` does a folder. Needs `upa-tables.json`. Shares `pcs30_arrange.py`'s card walk, held-note voice and MIDI writer, and `upa_rhythm.py`'s voicing. Four documented departures from the cartridge: chords on the beat (it plays them a step late), the exported voicing, a fill's feel from the rhythm (`--fill-feel card` keeps the cartridge's), and notes held to the next strike |
+| `upa_arrange.py` | A card as a five-part MIDI arrangement using the CARTRIDGE's accompaniment: melody, obbligato, bass, chord, drums on channel 10. `--all` does a folder. Needs `upa-tables.json`, and `pcs30-tables.json` too unless `--drums upa`. Shares `pcs30_arrange.py`'s card walk, held-note voice, MIDI writer and drum tables, and `upa_rhythm.py`'s voicing. Departures from the cartridge, all listed in its docstring: chords on the beat (it plays them a step late), bossa-nova's last chord onto the clave, the exported voicing, the next bass note forced to a new root, a fill's feel from the rhythm, chords ringing to the next beat, and the PCS-30's drum patterns by default. `--as-is` turns all of it off |
 | `pcs30_tables.py` | Loads that file for everything else, and is where `pitch_byte` and `drum_mask` live. Run alone it says whether the tables are present and which ROM they came from |
 
 ## Corrupting a card on purpose
@@ -1136,21 +1136,30 @@ These are conventions and the document says so where they appear; everything abo
 its halves - rhumba's second cymbal and latin drum both do - so nothing that prints or exports a
 pattern may fold it to one bar.
 
-### The arranger, and the four things it does differently
+### The arranger, and where it departs from the cartridge
 
 `upa_arrange.py` writes the five-part MIDI: the card's melody and obbligato, and the cartridge's
 bass, chord and drums. It borrows `pcs30_arrange.py`'s card walk (`marks_and_chords`, `chord_at`),
-its held-note `Voice` and its MIDI writer, so the two arrangers stay in step. Each departure from
-what the cartridge does is the owner's decision, and all four are in the tool's docstring:
+its held-note `Voice`, its MIDI writer and now its drum tables as well, so the two arrangers stay in
+step. Every departure below is the owner's decision, all are in the tool's docstring, and `--as-is`
+turns the lot off and plays what the cartridge plays.
 
 * **Chords land on the beat.** The cartridge sends its chord part **one step late** - measured on
-  every rhythm - which is what makes bossa-nova's syncopated chord and slow-rock's busy alternate
-  sound off the beat on the real thing. Drop that step and every chord in all ten rhythms, both
-  patterns, falls on a clean sixteenth or (on the swung rhythms) a triplet eighth: 0 exceptions in
-  the whole table, which is how we know the lateness is the machine and not the data. The bass is
-  never late.
-* **The chord is voiced for a synthesizer**, per the section above, because the cartridge's own key
-  codes spell a root and a flattened third whatever the chord is.
+  every rhythm - which is what makes slow-rock's busy alternate sound off the beat on the real
+  thing. Drop that step and every chord in all ten rhythms, both patterns, falls on a clean
+  sixteenth or (on the swung rhythms) a triplet eighth: 0 exceptions in the whole table, which is how
+  we know the lateness is the machine and not the data. The bass is never late.
+* **Bossa-nova's last chord is moved a sixteenth earlier**, which is the one place the DATA is
+  wrong. That pattern is the bossa clave - 3+3+4+3+3 sixteenths, beats 1, 2 1/2, 4, 6, 7 1/2 over its
+  two bars - and its last stroke is written at 7 3/4. Two things say so rather than one: every other
+  stroke is exactly on the clave, and every other chord in the block is held a quarter note while
+  that one is held a quarter less a sixteenth, exactly as a stroke starting two steps late would be.
+  It is the only asymmetry of its kind in the twenty patterns. The owner heard it before it was
+  found, twice - it survived the first pass because a sixteenth-offbeat chord is still on the grid,
+  and a grid check cannot tell a syncopation from a mistake.
+* **The chord is voiced for a synthesizer**, per the section above.
+* **A chord change forces the next bass note to the new root**, whatever the pattern holds there,
+  the flag waiting through rests - the PCS-30's own rule, its ROM `0x173E`.
 * **A fill's feel follows the rhythm.** The cartridge plays each fill in the feel it is stored in -
   1 and 2 straight, 3 and 4 swung, 5 and 6 for the waltz - and the PC-100 and PCS-30 play any fill
   in the rhythm's. The authoring system chose to match: over the corpus, fills 1 and 2 appear on the
@@ -1158,11 +1167,19 @@ what the cartridge does is the owner's decision, and all four are in the tool's 
   **only** on waltz cards. So the disagreement bites about fifty marks, the biggest group being fill
   3 on disco and rock cards. The default swaps in the fill of the same rank in the matching group;
   fills 1 and 3 are the same figure in the two feels, so that one is exact, while the other pairs
-  are different figures and the figure changes with the feel. `--fill-feel card` keeps the bug.
-* **Bass and chord notes hold to the next strike**, across bar lines and through the pattern's own
-  rests, and are cut at the end of the bar only where nothing will strike them off: an accompaniment
-  mute, or the end of the card. A chord change stops what is held - the cartridge instead rewrites
-  its multipliers, so one note changes pitch, which MIDI cannot do without a new strike.
+  are different figures and the figure changes with the feel.
+* **Notes hold, but not for ever.** A bass note runs to the next bass note. A chord rings **to the
+  next beat**, which keeps the texture from smearing, and a chord caught by the chart's
+  accompaniment mute is held out to the bar line instead. A chord change stops what is held - the
+  cartridge instead rewrites its multipliers, so one note changes pitch, which MIDI cannot do
+  without a new strike.
+* **The drums are the PCS-30's by default.** Both machines have the same five drums, so the patterns
+  mix, and `--drums` says how. `mixed`, the default, is what sounds best to the owner: the
+  **PCS-30's patterns for the ten rhythms**, the **cartridge's own fills 1 to 4**, and the
+  **PCS-30's for the waltz pair 5 and 6**. `--drums upa` is all the cartridge's and needs no PCS-30
+  ROM; `--drums pcs30` is all the keyboard's. When the PCS-30's own fills are used they are indexed
+  the way that keyboard indexes them - `BIT_OF_RAW[RAW_OF_MARK[mark]]`, which is a permutation of
+  the cartridge's numbering, so mark 5 is its fill bit 0.
 
 **The five drums stay apart on the GM kit** - closed and open hi-hat, bass drum, open high conga and
 acoustic snare - even though the cartridge itself plays the snare and the latin drum with one voice.

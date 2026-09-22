@@ -2,7 +2,8 @@
 """A Playcard as a full MIDI arrangement, using the UPA-01's own accompaniment.
 
     python upa_arrange.py card.bin [-o out.mid]
-    python upa_arrange.py card.bin --fill-feel card    # keep the cartridge's bug
+    python upa_arrange.py card.bin --drums upa         # no PCS-30 ROM needed
+    python upa_arrange.py card.bin --as-is             # what the cartridge plays
     python upa_arrange.py --all                        # a whole folder
 
 What comes out is what the UPA-01 cartridge plays from this card: the melody and
@@ -34,16 +35,25 @@ in its high one, three bits of it a bass note as a chord-tone number and one bit
 a chord strike. **Everything happens where a field changes**, so a run of equal
 bytes is one held note.
 
-Four places where this does not do what the cartridge does
-----------------------------------------------------------
-Each is either a fault of the cartridge or a fact about MIDI, and each is the
-owner's decision rather than a reading of the ROM.
+Where this does not do what the cartridge does
+---------------------------------------------
+Every one of these is either a fault of the cartridge or a fact about MIDI, and
+every one is the owner's decision rather than a reading of the ROM. `--as-is`
+turns the lot off and plays what the cartridge plays.
 
 * **Chords land on the beat.** The cartridge plays its chord part one step late -
-  every chord in every rhythm, which is why bossa-nova's syncopated chord and
-  slow-rock's alternate sound off the beat on the real thing. Drop that step and
-  all ten rhythms' chords fall on a clean sixteenth (or, on the swung rhythms, a
-  triplet eighth), which is plainly what was meant. The bass is never late.
+  every chord in every rhythm - which is why slow-rock's busy alternate sounds
+  off the beat on the real thing. Drop that step and all ten rhythms' chords fall
+  on a clean sixteenth, or a triplet eighth on the swung ones. The bass is never
+  late.
+
+* **Bossa-nova's last chord is moved onto the clave.** That pattern is the bossa
+  clave, 3+3+4+3+3 sixteenths - beats 1, 2 1/2, 4, 6, 7 1/2 over its two bars -
+  and its last stroke is written a sixteenth late, at 7 3/4. Two things say so
+  rather than one: every other stroke is exactly on the clave, and every other
+  chord in the block is held a quarter note while that one is held a quarter less
+  a sixteenth, exactly as a stroke starting two steps late would be. It is the
+  only asymmetry of its kind in the twenty patterns, and it is audible.
 
 * **The chord is voiced for a synthesizer.** The cartridge keys the same two
   notes for every chord - a root and a flattened third - and gets the real chord
@@ -51,6 +61,11 @@ owner's decision rather than a reading of the ROM.
   holds the voicing used instead: root, third and fifth, plus the flattened
   seventh on a seventh chord, in the octave band that ends at C5, and a bass root
   of C2 that drops an octave from G upwards.
+
+* **A chord change forces the next bass note to the new root**, whatever the
+  pattern holds at that step, and the flag waits through rests so the root lands
+  on the next actual strike. That is the PCS-30's own rule (its ROM 0x173E), and
+  it is what keeps the bass line following the harmony.
 
 * **A fill's feel follows the rhythm.** The cartridge stores each fill in one
   feel and plays it that way whatever the rhythm - fills 1 and 2 straight, 3 and
@@ -60,25 +75,31 @@ owner's decision rather than a reading of the ROM.
   slow-rock, 5 and 6 only on waltzes), the disagreement bites about fifty marks,
   of which the biggest group is fill 3 on disco and rock cards. `--fill-feel
   rhythm`, the default, swaps in the fill of the same rank in the group that
-  matches: 3 and 4 become 1 and 2 on a straight rhythm, 1 and 2 become 3 and 4 on
-  a swung one, and anything on a waltz card becomes 5 or 6. Fills 1 and 3 are the
-  same figure in the two feels, so that swap is exact; the others are not, so the
-  figure changes with the feel. `--fill-feel card` keeps the cartridge's choice,
-  bug and all.
+  matches. Fills 1 and 3 are the same figure in the two feels, so that swap is
+  exact; the others are not, so the figure changes with the feel.
 
-* **Bass and chord notes hold until something strikes again**, across bar lines
-  and through the pattern's own rests, which is how the PCS-30 sounds. They are
-  cut at the end of the bar in the two places where nothing will strike again:
-  where the chart mutes the accompaniment, and at the end of the card. On a chord
-  change whatever is held stops rather than ringing on under the new harmony -
-  the cartridge instead rewrites its multipliers, so the same note changes pitch,
-  which MIDI cannot do without a new strike.
+* **Notes hold, but not for ever.** A bass note runs until the next bass note.
+  A chord rings **to the next beat**, which is what stops the texture smearing,
+  and where the chart mutes the accompaniment it is held out to the bar line
+  instead - both as `pcs30_arrange.py` does it. A chord change stops whatever is
+  held rather than letting it ring under the new harmony; the cartridge instead
+  rewrites its multipliers, so one note changes pitch, which MIDI cannot do
+  without a new strike.
 
-The drums are kept apart
-------------------------
-The cartridge plays its five drums with four voices - the snare and the latin
-drum are the same one, which is why it sounds as though it has three. On the GM
-kit all five stay separate, so a samba's congas are congas.
+Whose drums
+-----------
+Both machines have the same five drums - kick, latin drum, snare, and a long and
+a short cymbal - so their patterns can be mixed, and `--drums` says how. The
+default, `mixed`, is what sounds best: **the PCS-30's patterns for the ten
+rhythms**, because the cartridge's have oddities the keyboard's do not, **the
+cartridge's own fills 1 to 4**, which are the better ones, and **the PCS-30's for
+the waltz pair 5 and 6**. `--drums upa` is all the cartridge's and needs no
+PCS-30 ROM; `--drums pcs30` is all the keyboard's, which is `pcs30_arrange.py`'s
+drum track with this card's accompaniment.
+
+All five stay separate on the GM kit, even though the cartridge itself plays the
+snare and the latin drum with one voice - which is why it sounds as though it has
+three drums. So a samba's congas are congas.
 """
 
 import argparse
@@ -91,21 +112,32 @@ import playcard_decode as P
 import playcard_resolve as R
 import midi_export as M
 import pcs30_arrange as A               # the card walk, the voice, the MIDI writer
+import pcs30_tables as PT               # its drum patterns, for --drums
 import upa_extract as X
 import upa_rhythm as U
 
-# The five mask bits on the GM kit, kept apart.  The second cymbal is the
-# cartridge's other channel-6 voice; the two are close enough by ear that the
-# ROM is the only place they are plainly different, so they go to the two
-# hi-hats.  The latin drum plays rhumba's and samba's busy figure, so it is a
-# conga rather than the claves `pcs30_arrange.py` uses for the PCS-30's sparser
-# clave line.
-DRUM_GM = {7: 42,                       # cymbal        -> closed hi-hat
-           6: 46,                       # second cymbal -> open hi-hat
-           5: 36,                       # kick          -> bass drum 1
-           4: 63,                       # latin         -> open high conga
-           3: 38}                       # snare         -> acoustic snare
-DRUM_VEL = {42: 60, 46: 66, 36: 96, 63: 72, 38: 92}
+# Both machines have the same five drums, so the GM kit is addressed by name and
+# each machine's bits are mapped onto it.  The two cymbals are the cartridge's
+# two channel-6 voices, close enough by ear that the ROM is the only place they
+# are plainly different, so they go to the two hi-hats; the latin drum is a conga
+# (`pcs30_arrange.py` makes it claves, because there it plays the son clave).
+GM = {'kick': 36, 'snare': 38, 'latin': 63, 'cymbal-short': 42, 'cymbal-long': 46}
+VEL = {'kick': 96, 'snare': 92, 'latin': 72, 'cymbal-short': 60, 'cymbal-long': 66}
+
+# bit -> drum, for each machine's own strike mask
+UPA_BITS = {7: 'cymbal-short', 6: 'cymbal-long', 5: 'kick', 4: 'latin', 3: 'snare'}
+PCS_BITS = {4: 'cymbal-short', 3: 'cymbal-long', 2: 'snare', 1: 'latin', 0: 'kick'}
+
+# A correction to the pattern data itself, in steps, by card rhythm.
+#
+# Bossa-nova's chord pattern is the bossa clave - 3+3+4+3+3 sixteenths, which is
+# beats 1, 2 1/2, 4, 6, 7 1/2 over its two bars - except that its last stroke is
+# written a sixteenth late, at 7 3/4.  Two things say so rather than one: every
+# other stroke is exactly on the clave, and every other chord in the block is
+# held a quarter note while that one is held a quarter less a sixteenth, as a
+# stroke starting two steps late would be.  It is audible, and it is the only
+# asymmetry of its kind in any of the twenty patterns.  `--as-is` leaves it.
+CHORD_FIX = {4: {54: -2}}               # bossa-nova, block step 54, two earlier
 
 CHORD_VEL = 86
 DRUM_LEN = 6                            # a sixteenth; long enough for any kit
@@ -121,6 +153,14 @@ WALTZ = 7
 def fill_group(rhythm):
     return 'waltz' if rhythm == WALTZ else \
         ('swung' if rhythm in SWUNG else 'straight')
+
+
+def fills_from(fill, source):
+    """Whose fill to play.  The cartridge's four-beat fills are the better ones
+    by ear; its waltz pair, 5 and 6, are not, so those come from the PCS-30."""
+    if source in ('upa', 'pcs30'):
+        return source
+    return 'pcs30' if fill in (5, 6) else 'upa'
 
 
 def fill_for(rhythm, mark, feel):
@@ -158,6 +198,12 @@ class Chord(object):
         if self.notes:
             self.deadline = tick if self.deadline is None else min(self.deadline, tick)
 
+    def hold(self, tick):
+        """Push a scheduled end later - an accompaniment mute does this, so a
+        chord caught by one rings to the bar line instead of to the next beat."""
+        if self.notes and self.deadline is not None:
+            self.deadline = max(self.deadline, tick)
+
     def settle(self, now):
         if self.deadline is not None and now >= self.deadline:
             self._close(self.deadline)
@@ -190,11 +236,20 @@ def played(row, bar_ticks):
 
 
 def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
-            tables=X.TABLES):
+            tables=X.TABLES, source='mixed', as_is=False):
     vv = dict(melody=A.MELODY_VEL, obbligato=A.OBBLIGATO_VEL,
               bass=A.BASS_VEL, chord=CHORD_VEL)
     vv.update(vel or {})
+    if as_is:
+        source, fill_feel = 'upa', 'card'
     doc = X.load(tables)
+    tab30 = None
+    if source != 'upa':
+        try:
+            tab30 = PT.load()
+        except PT.Missing as e:
+            raise SystemExit('%s\nOr arrange with the cartridge\'s own drums: '
+                             '--drums upa' % e)
 
     h = M.load(card)
     joined = False
@@ -229,12 +284,13 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
     chord_v = Chord(chord_out, vv['chord'])
 
     acc_steps, acc_ticks, acc_play = played(acc_row, bar_ticks)
-    fills = muted_bars = alt_bars = 0
+    fills = muted_bars = alt_bars = roots_forced = fixed = 0
 
     # ---- the accompaniment: bass where its number changes, chord where its bit
     # rises.  The cartridge sends the chord a step later than this; see the
     # docstring.
-    prev_chord = None
+    prev_chord, prev_root, pending = None, None, False
+    fix = {} if as_is else CHORD_FIX.get(rhythm, {})
     for bar in range(nbars):
         t0 = bar * bar_ticks
         here = [(t, v) for t, v in marks if t0 <= t < t0 + bar_ticks]
@@ -255,11 +311,13 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
                 v.settle(tick)
             ch = A.chord_at(chords, tick)
             if ch is None:
-                # the chart's accompaniment mute: what is sounding rings on to
-                # the bar line, because nothing will strike it off
-                for v in (bass_v, chord_v):
-                    v.release(t0 + bar_ticks)
-                prev_chord = None
+                # The chart's accompaniment mute.  The bass rings to the bar
+                # line, and a chord caught by the mute is held out to it too
+                # rather than stopping at the next beat.
+                bass_v.release(t0 + bar_ticks)
+                chord_v.hold(t0 + bar_ticks)
+                chord_v.release(t0 + bar_ticks)
+                prev_chord, prev_root = None, None
                 continue
             root, minor, seventh = ch
             quality = (1 if minor else 0) + (2 if seventh else 0)
@@ -267,26 +325,80 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
                 bass_v.off(tick)
                 chord_v.off(tick)
             prev_chord = (root, quality)
+            if prev_root is not None and root != prev_root:
+                # The chord has moved, so the next bass note to sound is the new
+                # ROOT rather than whatever the pattern holds at that step - the
+                # PCS-30's own rule (its ROM 0x173E).  The flag waits through
+                # rests, so the root lands on the next actual strike.
+                pending = True
+            prev_root = root
 
             if now & 7 and (now & 7) != (was & 7):
-                n = U.bass_note(root, now & 7, quality)
+                tone = now & 7
+                if pending and not as_is:
+                    tone, pending = 1, False
+                    roots_forced += 1
+                n = U.bass_note(root, tone, quality)
                 if n is not None:
                     bass_v.strike(tick, n)      # holds until the next strike
             if now & 8 and not was & 8:
-                chord_v.strike(tick, U.chord_notes(root, quality))
+                at = tick + (acc_ticks if as_is else 0)
+                if k in fix:
+                    at += fix[k] * acc_ticks    # a correction, in steps
+                    fixed += 1
+                chord_v.strike(at, U.chord_notes(root, quality))
+                # a chord rings to the next beat, unless a mute holds it longer
+                chord_v.release((at // 24 + 1) * 24)
 
     for v in (bass_v, chord_v):
         v.settle(end)
         v.off(end)
 
-    # ---- the drums, from the rhythm's block or a fill's.  Each block is walked
-    # by (which bar, which tick), so a fill on a different grid still lines up.
-    def block(row_):
-        steps, ticks_, play = played(row_, bar_ticks)
+    # ---- the drums.  Two machines' patterns can be mixed, because both have the
+    # same five drums: by default the PCS-30's for the rhythms, the cartridge's
+    # own for fills 1 to 4, and the PCS-30's for the waltz pair 5 and 6.
+    def upa_block(row_):
+        steps, _, play = played(row_, bar_ticks)
         return steps, play, {(hf, st): j for j, (hf, st, _) in enumerate(play)}
 
-    rowsteps, rplay, rwhere = block(drum_row)
-    fblock = {}
+    def upa_strikes(row_, bar, t0):
+        """What a cartridge block strikes in this bar: {tick: [drum, ...]}."""
+        steps, play, where = upa_block(row_)
+        out = {}
+        for j, (half, st, k) in enumerate(play):
+            if half != bar % 2:
+                continue
+            now, was = steps[k], steps[play[j - 1][2]]
+            hit = [d for bit, d in UPA_BITS.items()
+                   if now >> bit & 1 and not was >> bit & 1]
+            if hit:
+                out[t0 + st] = hit
+        return out
+
+    pcs_steps = 12 if rhythm in A.TRIPLET or rhythm == WALTZ else 16
+    pcs_step_ticks = bar_ticks // pcs_steps
+
+    def pcs_strikes(bank_bit, bar, t0, separate):
+        """What a PCS-30 bank entry strikes in this bar, on the rhythm's grid."""
+        bank, bit = bank_bit
+        out = {}
+        for s in range(pcs_steps):
+            m = tab30.drum_mask(bank, bit, (bar % 2) * 16 + s)
+            if separate and m & (1 << A.KICK) and m & (1 << A.SNARE):
+                # pcs30_arrange's rule, kept so the two tools agree: a doubled
+                # step is cluttered on a GM kit, the downbeat belongs to the
+                # kick, and disco is the exception that gives it to the snare.
+                if s == 0:
+                    m &= ~(1 << A.SNARE)
+                elif rhythm in A.SNARE_TAKES_THE_BACKBEAT:
+                    m &= ~(1 << A.KICK)
+            hit = [d for bit_, d in PCS_BITS.items() if m >> bit_ & 1]
+            if hit:
+                out[t0 + s * pcs_step_ticks] = hit
+        return out
+
+    row30 = rhythm - 1
+    pcs_rhythm_at = (0, 7 - row30) if row30 < 8 else (1, 15 - row30)
     fill_used = {}
     for bar in range(nbars):
         t0 = bar * bar_ticks
@@ -296,35 +408,35 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
         asked = [v for _, v in here if 1 <= v <= 6]
         if asked:
             fills += 1
-        for t, v in here:
-            if 1 <= v <= 6:
-                f = fill_for(rhythm, v, fill_feel)
-                fill_used[f] = fill_used.get(f, 0) + 1
-        for half, st, k in rplay:
-            if half != bar % 2:
-                continue
-            tick = t0 + st
-            if tick >= end:
-                break
-            active = [v for t, v in here if t <= tick]
+
+        # the pattern in force at the start of the bar, and where it changes
+        plan = []                               # (from tick, {tick: [drum,...]})
+        mark_ticks = [t0] + [t for t, v in here if v == 0 or 1 <= v <= 6]
+        for at in sorted(set(mark_ticks)):
+            active = [v for t, v in here if t <= at]
             if 0 in active:
-                continue                        # the drum mute
+                plan.append((at, {}))           # the drum mute
+                continue
             asked_now = [v for v in active if 1 <= v <= 6]
             if asked_now:
                 f = fill_for(rhythm, asked_now[-1], fill_feel)
-                if f not in fblock:
-                    fblock[f] = block(doc['fills'][f - 1])
-                usteps, use, where = fblock[f]
+                fill_used[f] = fill_used.get(f, 0) + 1
+                if fills_from(f, source) == 'pcs30':
+                    bit = A.BIT_OF_RAW[A.RAW_OF_MARK[f]]
+                    plan.append((at, pcs_strikes((1, bit), bar, t0, False)))
+                else:
+                    plan.append((at, upa_strikes(doc['fills'][f - 1], bar, t0)))
+            elif source == 'upa':
+                plan.append((at, upa_strikes(drum_row, bar, t0)))
             else:
-                usteps, use, where = rowsteps, rplay, rwhere
-            idx = where.get((bar % 2, st))
-            if idx is None:
-                continue                        # a step this block does not have
-            now = usteps[use[idx][2]]
-            was = usteps[use[idx - 1][2]]
-            for bit, gm in DRUM_GM.items():
-                if now >> bit & 1 and not was >> bit & 1:
-                    drums.append((tick, DRUM_LEN, gm, DRUM_VEL[gm]))
+                plan.append((at, pcs_strikes(pcs_rhythm_at, bar, t0, True)))
+
+        for i, (at, strikes) in enumerate(plan):
+            until = plan[i + 1][0] if i + 1 < len(plan) else t0 + bar_ticks
+            for tick in sorted(strikes):
+                if at <= tick < min(until, end):
+                    for d in strikes[tick]:
+                        drums.append((tick, DRUM_LEN, GM[d], VEL[d]))
 
     bass.sort()
     chord_out.sort()
@@ -364,15 +476,23 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
               % (len(mel), mv, A.GM_VOICE.get(mv, 0), '  +1 octave' if moct else ''))
         print('  obbligato: %4d notes  %-8s -> GM %-3d%s'
               % (len(obb), ov, A.GM_VOICE.get(ov, 0), '  +1 octave' if ooct else ''))
-        print('  bass     : %4d notes, held to the next strike' % len(bass))
-        print('  chord    : %4d notes, on the beat (the cartridge is a step late)'
-              % len(chord_out))
+        print('  bass     : %4d notes, held to the next strike%s'
+              % (len(bass), ', %d forced to the root by a chord change' % roots_forced
+                 if roots_forced else ''))
+        print('  chord    : %4d notes, %s, each ringing to the next beat%s'
+              % (len(chord_out),
+                 'a step late, as the cartridge plays it' if as_is else 'on the beat',
+                 ', %d moved onto the bossa clave' % fixed if fixed else ''))
         print('  drums    : %4d hits, %d bar%s muted, %d bar%s with a fill%s'
               % (len(drums), muted_bars, '' if muted_bars == 1 else 's',
                  fills, '' if fills == 1 else 's',
                  ('  fills used: %s' % ' '.join('%d x%d' % kv
                                                 for kv in sorted(fill_used.items()))
                   if fill_used else '')))
+        print('  patterns : from %s' % (
+            'the cartridge' if source == 'upa' else
+            ('the PCS-30' if source == 'pcs30' else
+             "the PCS-30, with the cartridge's own fills 1-4")))
         print('  fill feel: %s' % ('the rhythm\'s (%s)' % fill_group(rhythm)
                                    if fill_feel == 'rhythm' else "the card's, as the cartridge plays it"))
         print('  -> %s' % out)
@@ -388,6 +508,14 @@ def main():
     ap.add_argument('--in-dir', help='with --all, the folder to read cards from')
     ap.add_argument('--out-dir', default=os.path.join(P.HERE, 'upa-midi'),
                     help='with --all, where the .mid files go (default: upa-midi/)')
+    ap.add_argument('--drums', choices=('mixed', 'upa', 'pcs30'), default='mixed',
+                    help="whose drum patterns: mixed (default) takes the rhythms and "
+                         "the waltz fills 5 and 6 from the PCS-30 and fills 1 to 4 from "
+                         "the cartridge, which is how they sound best; upa is all the "
+                         "cartridge's and needs no PCS-30 ROM; pcs30 is all the keyboard's")
+    ap.add_argument('--as-is', action='store_true',
+                    help="what the CARTRIDGE plays: its own drums, its fixed fill feel, "
+                         'its chord part a step late and its bossa-nova clave uncorrected')
     ap.add_argument('--fill-feel', choices=('rhythm', 'card'), default='rhythm',
                     help="whose feel a fill takes: the rhythm's, as the PC-100 and "
                          "the PCS-30 play it (default), or the card's fill number, "
@@ -430,7 +558,8 @@ def main():
                     continue
                 base = os.path.splitext(os.path.basename(c))[0].replace('_side-a', '')
                 arrange(c, os.path.join(a.out_dir, base + '_upa.mid'),
-                        fill_feel=a.fill_feel, vel=vel, drop=drop, quiet=True)
+                        fill_feel=a.fill_feel, vel=vel, drop=drop, quiet=True,
+                        source=a.drums, as_is=a.as_is)
                 done += 1
             except SystemExit as e:
                 print('  %s: %s' % (os.path.basename(c), e))
@@ -439,7 +568,8 @@ def main():
 
     if not a.card:
         ap.error('give a card, or --all')
-    arrange(a.card, a.out, fill_feel=a.fill_feel, vel=vel, drop=drop)
+    arrange(a.card, a.out, fill_feel=a.fill_feel, vel=vel, drop=drop,
+            source=a.drums, as_is=a.as_is)
     return 0
 
 
