@@ -1560,10 +1560,16 @@ The card carries melody, obbligato, tempo, rhythm and pattern selection, voices,
 drum fills and the obbligato's balance against the melody — the arrangement, not the accompaniment
 itself.
 
-Those tables have now been read out of **another** instrument. The UPA-01's own are still
-unextracted, but the PCS-30 keyboard's are decoded in full — see below, where the same rhythm
-numbering and the same chord-type encoding turn up in a machine that shares nothing else with the
-cartridge.
+Those tables have now been read out of **both** instruments. The **UPA-01's own** are in the
+cartridge ROM and are decoded (2026-09-22): ten drum patterns, six drum fills and ten accompaniment
+patterns, each two bars at one byte a step, where a drum byte is a five-bit strike mask and an
+accompaniment byte carries **both** of a rhythm's patterns - three bits of a nibble a bass note as a
+chord-tone number, one bit a chord strike - and an event happens wherever a field changes. The
+**PCS-30 keyboard's** are decoded in full as well - see below, where the same rhythm numbering and
+the same chord-type encoding turn up in a machine that shares nothing else with the cartridge.
+Neither instrument's patterns are in this repository: `upa_extract.py` and `pcs30_extract.py` lift
+them out of a ROM you own, and "The accompaniment patterns" in `HANDOFF.md` has the cartridge's
+layout, addresses and the way it was measured.
 
 ---
 
@@ -2213,9 +2219,11 @@ exactly what the corpus does by stopping at 62.
 ### What this does and does not settle
 
 It gives a complete, worked example of a Yamaha accompaniment generator built around this format,
-using the same rhythm numbering and the same chord-type encoding as the cards. It does **not**
-give the UPA-01's tables: that is a different machine with a different sound chip, and its patterns
-are still unextracted. What the PCS-30 supplies is the shape to look for.
+using the same rhythm numbering and the same chord-type encoding as the cards. It is **not** the
+UPA-01's tables: that is a different machine with a different sound chip, and the cartridge's own
+patterns, since decoded, turned out to be laid out quite differently - a five-bit drum mask and two
+patterns packed into one accompaniment byte, against the keyboard's semitone offsets and
+bit-planes. What the PCS-30 supplied first was the shape to look for.
 
 ---
 
@@ -2538,14 +2546,6 @@ the capture cannot run at true speed. It is an excellent oracle and a poor conve
   operators'; the one testable guess left is that the patterns simply suit one feel better once
   swung.
 
-- **The UPA-01's own bass and drum patterns.** The card selects and gates them but does not contain
-  them; they live in the firmware's pattern tables. Everything the card contributes is now decoded
-  — rhythm style, standard or alternate pattern, per-bar fills, and the two mutes — so a capture
-  can be attributed to a fully known selection, which is what the pattern tables have to reproduce.
-  The **PCS-30's** equivalent tables are now fully decoded (see above), which gives the shape to
-  look for: ten rows in the card's own rhythm order, one byte per step as a 1-based semitone offset
-  from the chord root, and separate tables for sevenths. The cartridge's are not those tables, but
-  they are the best lead there has been.
 - **Which PCS-30 fill each mark names.** The dispatch is settled and the mute is settled, but a
   table bit index is a storage slot rather than a fill number, so which of the six stored patterns
   is heard for a given mark is still only inferred — from metre, which puts the two four-beat fills
