@@ -1903,6 +1903,16 @@ that does not go near it never does. The header lock even makes mark 7 a no-op a
 state is concerned — `0xD352` is already `C3` and the handler's `OR 0xC1` changes nothing — and the
 chord notes still drop. Handling the mark is enough on its own.
 
+**The code at fault has since been found.** Handling mark 7 flags a pattern change, and a pattern
+change runs the routine at `0x4C63`, which rebuilds the pattern and then sends the chord part
+**chord code 3, "no chord"** (`LD C,03h / LD D,04h / CALL 4E5D` at `0x4CB5`). The SFG-01 clears the
+"sounding" bit of its chord byte `0xEC23`, and the chord is only sent again when the card's next
+chart record arrives. The header lock escapes because its pattern change happens before the card's
+first chord; a mark 7 changes the pattern twice mid-card, to the alternate and a bar later back,
+with no chord behind either. `csrc/playcard` repairs it by default by re-sending the current chord
+straight after the "no chord", as a restated chord would; `--as-is` leaves it in. See "The chord
+dropout" in `csrc/README.md`.
+
 `new-cards/dropout_trigger.py` builds every one of those cards and prints the table.
 
 **This was recorded here for weeks as an openMSX bug, and that was wrong.** `csrc/playcard`, an

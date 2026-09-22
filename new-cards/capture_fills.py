@@ -68,7 +68,7 @@ def capture(card, seconds):
     stem = os.path.join(HERE, os.path.splitext(os.path.basename(card))[0])
     fmlog, marks = stem + '.fmlog', stem + '.marks'
     cmd = [exe, card, '-o', fmlog, '--watch-out', marks,
-           '--seconds', str(seconds), '--roms', P.ROM_DIR, '--quiet', '--mix', 'cartridge']
+           '--seconds', str(seconds), '--roms', P.ROM_DIR, '--quiet', '--as-is']
     for a in WATCH:
         cmd[6:6] = ['--watch', a]
     P.say('capturing up to %d emulated seconds of %s'

@@ -229,7 +229,9 @@ that does not go near it never does. The header lock even makes mark 7 a no-op a
 state is concerned — `0xD352` is already `C3` and the handler's `OR 0xC1` changes nothing — and the
 chord notes still drop. Handling the mark is enough on its own.
 
-`new-cards/dropout_trigger.py` builds every one of those cards and prints the table.
+`new-cards/dropout_trigger.py` builds every one of those cards and prints the table;
+`--repaired` plays them with `csrc/playcard`'s repair of the bug on, and every row then holds.
+The code at fault is described in "The chord dropout" in `../csrc/README.md`.
 
 The two observations that drove the wrong diagnosis were both correct: original cards do it too, and
 real Playcard keyboards do not. They point at the *cartridge*, not at the emulator — a PC-100 is

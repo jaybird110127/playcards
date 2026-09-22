@@ -2,6 +2,7 @@
 """What triggers the UPA-01's chord dropout?  Build the cards and find out.
 
     python dropout_trigger.py                 # the whole matrix
+    python dropout_trigger.py --repaired      # the same, with the bug repaired
     python dropout_trigger.py --keep DIR      # keep the images and captures
 
 The UPA-01 stops sounding the accompaniment's two chord channels partway
@@ -21,6 +22,12 @@ holding ONE chord, differing only in
 Each is then played on ../csrc/playcard, and the run counts key-ons per bar on
 the two chord channels (3 and 4) against the bass (5).  A card whose chord
 count goes to zero and stays there has triggered the bug.
+
+csrc/playcard REPAIRS the bug by default, so this runs it --as-is, the machine
+untouched.  --repaired runs the same cards with the repair on, and every row
+should then hold all sixteen bars.  What the repair is, and the code at fault
+(the pattern-change routine at 0x4C63 sends the chord part "no chord"), is in
+"The chord dropout" in ../csrc/README.md.
 
 NEEDS the three ROM images and a built ../csrc/playcard - see ../Roms/README.md
 and ../csrc/README.md.
@@ -102,12 +109,16 @@ def bars_of(times, t0):
     return per
 
 
+AS_IS = ['--as-is']          # --repaired empties this
+
+
 def run(card, work, exe, tag):
     img = os.path.join(work, tag + '.bin')
     log = os.path.join(work, tag + '.fmlog')
     open(img, 'wb').write(E.build(card))
     r = subprocess.run([exe, img, '-o', log, '--quiet', '--seconds', '60',
-                        '--roms', P.ROM_DIR, '--mix', 'cartridge'], capture_output=True, text=True)
+                        '--roms', P.ROM_DIR, '--mix', 'cartridge'] + AS_IS,
+                       capture_output=True, text=True)
     if not os.path.isfile(log):
         raise P.Missing('csrc/playcard wrote no capture for %s:\n%s'
                         % (tag, (r.stdout + r.stderr).strip()))
@@ -141,14 +152,19 @@ def main():
         description="What triggers the UPA-01's chord dropout?")
     ap.add_argument('--keep', metavar='DIR',
                     help='keep the card images and captures here')
+    ap.add_argument('--repaired', action='store_true',
+                    help="play with csrc/playcard's repair of the bug on")
     a = ap.parse_args()
+    if a.repaired:
+        del AS_IS[:]
 
     exe = emulator()
     work = a.keep or tempfile.mkdtemp(prefix='dropout-')
     if not os.path.isdir(work):
         os.makedirs(work)
     try:
-        print('chord key-ons per bar, one chord held for all 16\n')
+        print('chord key-ons per bar, one chord held for all 16%s\n'
+              % (' - WITH THE REPAIR ON' if a.repaired else ''))
 
         print('WHICH ROUTE TO THE ALTERNATE PATTERN?')
         for label, f3, mark in (
@@ -175,10 +191,13 @@ def main():
                          'back-%s' % restate)
             show(label, per)
 
-        print('\nSo: mark 7 alone triggers it, in either header state; the')
-        print('header lock never does; no other mark does; and any chart')
-        print('record afterwards restores the chord notes, the same chord')
-        print('restated as readily as a new one.')
+        if a.repaired:
+            print('\nWith the repair every row should hold all 16 bars.')
+        else:
+            print('\nSo: mark 7 alone triggers it, in either header state; the')
+            print('header lock never does; no other mark does; and any chart')
+            print('record afterwards restores the chord notes, the same chord')
+            print('restated as readily as a new one.')
         if a.keep:
             print('\ncards and captures kept in %s' % work)
     finally:

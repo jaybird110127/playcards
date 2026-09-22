@@ -57,6 +57,11 @@ with a fixed feel rather than the rhythm's, chord notes drop, and a same-root ch
 the accompaniment. For what the card asks for, as against what this machine does with it, read
 `../playcard-format.md`.
 
+**One of those bugs is repaired by default**, the chord dropout: see "The chord dropout" below.
+`--keep-chord-dropout` leaves it in, and **`--as-is`** gives the machine untouched - the
+cartridge's own mix and every bug in place. Anything studying the firmware should pass `--as-is`,
+and every research script in this repository does.
+
 Neither program understands the Playcard format. That is the point: the card is
 decoded by Yamaha's own firmware, exactly as a keyboard would decode it, so the
 result is what the machine does rather than what we think it does.
@@ -97,8 +102,8 @@ The three mixes:
   writes and fewer key-ons. The obbligato stays, as a second line.
 * **`cartridge`**: the UPA-01's own 30 across the board, by touching nothing -
   the panel is left exactly as the firmware sets it. Use it whenever the
-  question is what the machine does; every research script in this repository
-  passes it.
+  question is what the machine does - or `--as-is`, which is this and the
+  chord dropout left in too.
 
 `--volume` sets one part outright and wins over whatever the mix chose, in
 either order. The program says what it did:
@@ -433,7 +438,70 @@ back the byte it just wrote — none of those is anybody consuming a value.
 This is what showed that the third part's level at `0xD349` is written and
 never read; see "the third ducked part" in `../playcard-format.md`.
 
+## The chord dropout
+
+The UPA-01 has a bug that has annoyed everyone who has heard it: switch to the
+alternate accompaniment with a **mark 7**, stay on the same chord, and the two
+chord channels fall silent until the chart changes. The bass and drums carry on.
+It is this cartridge's bug - real Playcard keyboards do not do it - and
+`../new-cards/dropout_trigger.py` shows exactly what sets it off.
+
+**The code at fault.** Every change of accompaniment pattern runs the routine at
+`0x4C63` (service 5 of the cartridge's dispatcher at `0x4850`). It rebuilds the
+pattern, and then it sends the chord part **chord code 3, "no chord"**:
+
+```
+4CB5  LD C,03h
+4CB7  LD D,04h        ; the chord part
+4CB9  CALL 4E5D
+```
+
+The SFG-01 takes that at `0x14FE` and clears bit 7 - "sounding" - of its chord
+byte `0xEC23`, so the chord channels stop. Nothing sends the chord again: the
+cartridge's event pump (`0x606E`) only sends one when the card's next chart
+record flags the chord byte `0xD353`. At the start of a card that is harmless,
+because the first chord event always follows the pattern events - which is why
+the header's lock never shows the bug. A mark 7 mid-card changes the pattern
+twice, to the alternate and a bar later back, with no chord behind either.
+
+**The repair** does what a restated chord on the card does. When the CPU reaches
+`0x4CB5` and `0xEC23` says a chord is sounding, `0xD353` is flagged as new, and
+the firmware's own pump re-sends the current chord a moment after the "no
+chord", through its normal path. Nothing in the ROM is changed.
+
+Checked two ways:
+
+* `dropout_trigger.py --repaired` plays its eighteen cards with the repair on,
+  and every one holds its chord notes for all sixteen bars; without it the
+  table is unchanged.
+* Across the corpus, **60 cards** trigger the repair. 33 get chord notes back -
+  1,164 in all, In the Mood going from 110 to 162 and Wives and Lovers from 240
+  to 360 - and the other 27 had a chart record close enough behind that nothing
+  was lost. **No card loses a note, and no other part's count changes on any of
+  the 264.** The re-sent chord costs the firmware a few milliseconds, so notes
+  near it move by up to 9 ms, as they do after any chord on the card.
+
+The program says when it has stepped in:
+
+```
+  chord dropout repaired 2 times
+```
+
+`--keep-chord-dropout` turns the repair off; `--as-is` turns it off along with
+the mix.
+
 ## Finding things: where the CPU is, and what is in RAM
+
+`--trace ADDR` prints a line every time the cartridge reaches a hex address:
+the time, the registers, and the top six words of the stack. The stack is the
+point - it says who called, which is how to follow a routine reached through a
+jump table. It is what found the chord dropout: the pattern handler at `0x5A9B`
+returning through `0x4CB5`, with C = 3.
+
+```bash
+./playcard card.bin -o card.fmlog --as-is --quiet --trace 14FE
+```
+
 
 `--pc-from S` counts where the CPU sits from second S onwards and prints the
 twenty busiest addresses at the end. A wait loop shows as a few addresses

@@ -74,6 +74,31 @@
 #define CR01_BIT      0x68B2
 #define CR01_BIT_RET  0x68B5
 
+/* The chord dropout, and its repair.
+ *
+ * Every change of accompaniment pattern runs the cartridge's routine at
+ * 0x4C63 (service 5 of 0x4850), which rebuilds the pattern and then, at
+ * 0x4CB5, sends the chord part chord code 3 - no chord - through 0x4E5D:
+ *
+ *     4CB5  LD C,03h
+ *     4CB7  LD D,04h
+ *     4CB9  CALL 4E5D
+ *
+ * The SFG-01 takes that at 0x14FE and clears bit 7, "sounding", of its chord
+ * byte 0xEC23, and the two chord channels fall silent.  Nothing sends the
+ * chord again until the card's next chart record flags the cartridge's chord
+ * byte 0xD353.  At the start of a card that is harmless - the first chord
+ * event always follows the pattern events, which is why the header's lock
+ * never shows the bug - but a mark 7 mid-card switches the pattern twice, to
+ * the alternate and a bar later back, with no chord to follow either.
+ *
+ * The repair does what a restated chord on the card does: on reaching
+ * 0x4CB5 with a chord sounding, flag 0xD353 as new, and the firmware's own
+ * event pump re-sends the current chord a moment after the "no chord". */
+#define DROPOUT_CHORD_OFF 0x4CB5
+#define SFG_CHORD         0xEC23       /* bit 7: a chord is sounding */
+#define CART_CHORD        0xD353       /* bit 7: send this chord */
+
 /* The cartridge's panel settings.  The keys (V and the arrows, T, K) write the
  * WANTED value into a block at 0xCC26, and a routine that runs a few hundred
  * times a second compares each one with the live copy at 0xCC09 and, where
@@ -165,6 +190,8 @@ typedef struct {
 
     uint16_t watch[MAXWATCH];      /* addresses to report every access to */
     int nwatch;
+    uint16_t trace[MAXWATCH];      /* cartridge addresses to report reaching */
+    int ntrace;
     memtouch *touch;
     long ntouch, touchmax;
 
@@ -174,6 +201,8 @@ typedef struct {
     int mix;                       /* MIX_CARTRIDGE, MIX_LEAD or MIX_KARAOKE */
     int quiet;
     int shown_voices;              /* the voice pair last reported, or -1 */
+    int fix_dropout;               /* repair the chord dropout; see above */
+    long dropouts_fixed;
 
     unsigned long *pchist;         /* one count an address, or NULL */
     unsigned long pcfrom;          /* not before this cycle */
@@ -583,12 +612,36 @@ static void impose_panel(msx *m, int with_tempo)
     }
 }
 
+/* --trace: the CPU has reached a traced address.  One line on stdout, with
+ * the registers and the top of the stack - the stack is what says who
+ * called, when a routine is reached through a jump table. */
+static void trace_line(msx *m)
+{
+    z80 *c = &m->cpu;
+    int k;
+    printf("trace %.6f pc=%04X a=%02X bc=%02X%02X de=%02X%02X hl=%02X%02X sp=%04X stack",
+           (double)c->cyc / CLOCK, c->pc, c->a, c->b, c->c, c->d, c->e, c->h, c->l, c->sp);
+    for (k = 0; k < 6; k++)
+        printf(" %04X", m->mem[(uint16_t)(c->sp + 2 * k)]
+               | (m->mem[(uint16_t)(c->sp + 2 * k + 1)] << 8));
+    printf("\n");
+}
+
 static void feed(msx *m)
 {
+    int k;
     if (m->page[1] != SLOT_CART)
         return;
+    for (k = 0; k < m->ntrace; k++)
+        if (m->cpu.pc == m->trace[k])
+            trace_line(m);
     if (m->cpu.pc == CARD_TEMPO_SET)
         impose_panel(m, 1);
+    if (m->cpu.pc == DROPOUT_CHORD_OFF && m->fix_dropout
+        && (m->mem[SFG_CHORD] & 0x80)) {
+        poke(m, CART_CHORD, (uint8_t)(m->mem[CART_CHORD] | 0x80));
+        m->dropouts_fixed++;
+    }
     if (m->cpu.pc == CR01_POLL) {
         m->cpu.a = (m->bitpos < m->swipe_end) ? 0x80 : 0x00;
         m->cpu.pc = CR01_POLL_RET;
@@ -909,12 +962,14 @@ int main(int argc, char **argv)
     const char *screenout = NULL;
     const char *keys_before = NULL, *keys_after = NULL;
     int want[NPANEL] = {-1, -1, -1, -1, -1, -1, -1};
-    int tempo_rel = 0, tempo_delta = 0, mix = MIX_LEAD;
+    int tempo_rel = 0, tempo_delta = 0, mix = MIX_LEAD, fix_dropout = 1;
     double screenat = -1.0;        /* < 0 means "when the card ends" */
     const char *psgout = NULL;
     const char *watchout = NULL;
     uint16_t watch[MAXWATCH];
     int nwatch = 0;
+    uint16_t trace[MAXWATCH];
+    int ntrace = 0;
     const char *cards[MAXCARDS];
     int ncards = 0, ci;
     long csize[MAXCARDS], start[MAXCARDS], bitpos;
@@ -957,6 +1012,11 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--screen") && i + 1 < argc) screenout = argv[++i];
         else if (!strcmp(argv[i], "--screen-at") && i + 1 < argc) screenat = atof(argv[++i]);
         else if (!strcmp(argv[i], "--keys") && i + 1 < argc) keys_before = argv[++i];
+        else if (!strcmp(argv[i], "--keep-chord-dropout")) fix_dropout = 0;
+        else if (!strcmp(argv[i], "--as-is")) {
+            mix = MIX_CARTRIDGE;
+            fix_dropout = 0;
+        }
         else if (!strcmp(argv[i], "--mix") && i + 1 < argc) {
             if (!parse_mix(argv[++i], &mix)) return 2;
         }
@@ -979,6 +1039,13 @@ int main(int argc, char **argv)
             watch[nwatch++] = (uint16_t)strtol(argv[++i], NULL, 0);
         }
         else if (!strcmp(argv[i], "--watch-out") && i + 1 < argc) watchout = argv[++i];
+        else if (!strcmp(argv[i], "--trace") && i + 1 < argc) {
+            if (ntrace == MAXWATCH) {
+                fprintf(stderr, "playcard: at most %d traced addresses\n", MAXWATCH);
+                return 2;
+            }
+            trace[ntrace++] = (uint16_t)strtol(argv[++i], NULL, 16);
+        }
         else if (argv[i][0] != '-') {
             /* More than one card means a two-sided set, swiped in order. */
             if (ncards == MAXCARDS) {
@@ -1007,6 +1074,10 @@ int main(int argc, char **argv)
                 "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
                 "                   the card's own tempo instead\n"
                 "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
+                "   --keep-chord-dropout  leave the UPA-01's chord dropout alone (it is\n"
+                "                   repaired by default: see csrc/README.md)\n"
+                "   --as-is         the machine untouched: --mix cartridge and every\n"
+                "                   firmware bug left in; for studying the firmware\n"
                 "   --keys SCRIPT   type at the panel before playback: v,right*3,wait:1,screen:F\n"
                 "   --play-keys S   the same, just after the start key\n"
                 "   two card files  a two-sided set, side A first: one swipe "
@@ -1015,7 +1086,9 @@ int main(int argc, char **argv)
                 "   --psg-log F     write the PSG writes to F\n"
                 "   --watch ADDR    report every read and write of ADDR "
                 "(repeatable)\n"
-                "   --watch-out F   where the watch report goes\n");
+                "   --watch-out F   where the watch report goes\n"
+                "   --trace ADDR    print registers and stack whenever the cartridge\n"
+                "                   reaches ADDR, in hex (repeatable)\n");
             return 2;
         }
     }
@@ -1037,6 +1110,10 @@ int main(int argc, char **argv)
             "   --tempo BPM     40-200 on the cartridge's grid of 4; +N or -N moves\n"
             "                   the card's own tempo instead\n"
             "   --transpose S   -5 to +6 semitones, the whole arrangement\n"
+                "   --keep-chord-dropout  leave the UPA-01's chord dropout alone (it is\n"
+                "                   repaired by default: see csrc/README.md)\n"
+                "   --as-is         the machine untouched: --mix cartridge and every\n"
+                "                   firmware bug left in; for studying the firmware\n"
             "   --keys SCRIPT   type at the panel before playback: v,right*3,wait:1,screen:F\n"
             "   --play-keys S   the same, just after the start key\n"
             "   --quiet         no progress output\n"
@@ -1045,7 +1122,9 @@ int main(int argc, char **argv)
             "   --psg-log F     write the PSG writes to F\n"
             "   --watch ADDR    report every read and write of ADDR "
             "(repeatable)\n"
-            "   --watch-out F   where the watch report goes\n");
+            "   --watch-out F   where the watch report goes\n"
+                "   --trace ADDR    print registers and stack whenever the cartridge\n"
+                "                   reaches ADDR, in hex (repeatable)\n");
         return 2;
     }
 
@@ -1053,7 +1132,10 @@ int main(int argc, char **argv)
     if (!machine_init(m, romdir, with_fm)) return 1;
     memcpy(m->want, want, sizeof want);
     m->tempo_rel = tempo_rel;
+    memcpy(m->trace, trace, sizeof trace);
+    m->ntrace = ntrace;
     m->mix = mix;
+    m->fix_dropout = fix_dropout;
     m->mute_melody = mix == MIX_KARAOKE;
     m->quiet = quiet;
     m->shown_voices = -1;
@@ -1220,6 +1302,9 @@ int main(int argc, char **argv)
         if (!quiet) {
             printf("  %s: %ld FM register writes, %ld key-ons\n",
                    free_tempo ? "F5" : "F2", m->ncap - before, keyons);
+            if (m->dropouts_fixed)
+                printf("  chord dropout repaired %ld time%s\n", m->dropouts_fixed,
+                       m->dropouts_fixed == 1 ? "" : "s");
             if (finished && free_tempo)
                 printf("      stopped after %.1f s. In free tempo that is not "
                        "the end of the card:\n      it is holding for the "

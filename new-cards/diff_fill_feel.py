@@ -77,7 +77,7 @@ def capture(card):
     log = os.path.join(HERE, os.path.splitext(card)[0] + '.fmlog')
     subprocess.check_call([PLAYCARD, os.path.join(HERE, card),
                            '-o', log, '--seconds', '60', '--quiet',
-                           '--roms', P.ROM_DIR, '--mix', 'cartridge'])
+                           '--roms', P.ROM_DIR, '--as-is'])
     drums, melody = [], None
     for line in open(log):
         p = line.split()

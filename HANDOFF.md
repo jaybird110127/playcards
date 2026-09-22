@@ -904,10 +904,24 @@ the field) by the time the tempo lands at `0x4316`, and lead aims the melody 4 L
 1 LU over the accompaniment. On 55 unseen voice pairs melody-over-obbligato came out +3.3 mean, sd
 1.1, against a target of 3. `--mix karaoke` is lead with the melody muted: volume 0 is not silence (the carrier TL
 only goes to `0x4F`, about 45 dB down), so key-ons on channels 0 and 1 - always the melody, doubled,
-on all 23 cards checked - are turned into key-offs. `--mix cartridge` imposes nothing at all, and
+on all 23 cards checked - are turned into key-offs. `--mix cartridge` imposes nothing at all.
+**`--as-is`** is that plus every firmware bug left in (today: the chord dropout, below), and
 **every research harness passes it** (`key_against_firmware.py`, `sweep_block2.py`,
 `new-cards/capture_fills.py`, `diff_fill_feel.py`, `dropout_trigger.py`), so their captures stay
 the machine untouched. Anything new that studies the firmware should do the same.
+
+**The chord dropout is found, and repaired by default in `csrc/playcard`.** Every pattern change
+runs `0x4C63` (service 5 of `0x4850`), which ends `LD C,03h / LD D,04h / CALL 4E5D` at `0x4CB5`:
+it sends the chord part chord code 3, "no chord". The SFG-01 clears bit 7 ("sounding") of its chord
+byte `0xEC23` at `0x14FE`, and nothing re-sends the chord until a chart record flags `0xD353`. At
+card start the first chord follows the pattern events, so the header lock is harmless; mark 7
+switches pattern twice mid-card with no chord behind. The repair: on reaching `0x4CB5` with
+`0xEC23` bit 7 set, set bit 7 of `0xD353`, so the firmware's own pump re-sends the chord - what a
+restated chord on the card does. `dropout_trigger.py --repaired` holds all sixteen bars on all
+eighteen cards; across the corpus 60 cards trigger it, 33 gain chord notes (1,164), none loses a
+note and no other part's count changes. `--keep-chord-dropout` or `--as-is` leave the bug in. The
+chase used the new `--trace ADDR` (registers and stack at an address): event pump `0x606E` -> event
+dispatcher `0x59D8` -> pattern handler `0x5A9B` -> `0x4850` service 5 -> `0x4CB5`.
 
 **Every capture from `csrc/playcard` before 2026-09-21 ran about 4% slow.** The playback loop runs the
 machine in quarter-second slices, and `run()` kept timer A's next overflow in a local variable, so
