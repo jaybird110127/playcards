@@ -37,6 +37,7 @@ random-cards/
 # Anything derived from a card: decoded music, captures, buffer dumps.
 midi/
 pcs30-midi/
+upa-midi/
 rmidi/
 *.mid
 !Sample Playcards/*.mid
