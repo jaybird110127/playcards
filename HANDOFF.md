@@ -411,6 +411,7 @@ desynchronise`, which looks like a pass.
 | `pcs30_rhythm.py` | The PCS-30's accompaniment pattern tables over any chord. `--chord G7 --rhythm march`. Reads `pcs30-tables.json`, not the ROM |
 | `pcs30_drums.py` | Its drum patterns and the six fills, from `pcs30-tables.json`. `--card X.bin` is different in kind: it *executes* the firmware's bar-mark handler and reports the drum state bar by bar, so that mode needs the ROM itself |
 | `pcs30_extract.py` | Reads a PCS-30 ROM once and writes `pcs30-tables.json`: the eight pattern tables at `0x2D26` and the five drum bit-planes at `0x2BBC`. Checks the shape of both before writing, so a wrong image is caught here rather than three tools later. `--check` reports on an existing file |
+| `upa_extract.py` | Reads a UPA-01 cartridge ROM once and writes `upa-tables.json`: the ten drum patterns at `0x523B`, the six drum fills at `0x5251` and the ten accompaniment patterns at `0x5261`, with each block's flags and ticks a step. Checks the whole structure first - the pointers, that the blocks tile their region exactly, and that every drum byte's low bits are the constant 2 - so a wrong image is caught here. `--check` reports on an existing file, `--show` prints the patterns as strikes and chord tones |
 | `pcs30_tables.py` | Loads that file for everything else, and is where `pitch_byte` and `drum_mask` live. Run alone it says whether the tables are present and which ROM they came from |
 
 ## Corrupting a card on purpose
@@ -1013,62 +1014,119 @@ nothing is selected:
 
 | table | at | entries | indexed by |
 |---|---|---|---|
-| A | `0x523B` | 10 and a null | the card's **raw rhythm** value, 0-9 |
-| B | `0x5251` | 6, entries 1-6 | the **fill** number from the escape opcode, 1-6 |
-| C | `0x5261` | 10, entries 1-10 | the raw rhythm **+ 1** |
+| **drums** | `0x523B` | 10 and a null | the card's **raw rhythm** value, 0-9 |
+| **drum fills** | `0x5251` | 6, entries 1-6 | the **fill** number from the escape opcode, 1-6 |
+| **accompaniment** | `0x5261` | 10, entries 1-10 | the raw rhythm **+ 1** |
 
 The blocks they name run back to back from `0x5279` to `0x589C`, 1572 bytes in all, and the code
-resumes immediately after. Measured on the cards: rhythm 4 (rock) reads A`#4` and C`#5`, rhythm 8
-(march) A`#8` and C`#9`, and Röslein, which has fill marks, reads B`#1` and B`#2`. Tables A and B
-are *copied into RAM* at `0xD0D0` when playback starts, by the loop at `0x4C42`; table C is read
-live, one byte a step, by `LD D,(HL)` at `0x50D6`.
+resumes immediately after. Measured on the cards: rhythm 4 (rock) reads the drum block for 4 and the
+accompaniment block for 5, rhythm 8 (march) 8 and 9, and Röslein, which has fill marks, reads fills
+1 and 2. **`upa_extract.py` lifts all three tables out of a ROM you own into a gitignored
+`upa-tables.json`**, checking the structure below before it writes; `--show` prints the patterns.
 
 **A block is two bars of 4/4 - 192 ticks - however it is cut up.** Two header bytes come first,
 flags and **ticks a step**, and then the steps, one byte each:
 
 * 66 bytes: 3 ticks a step, 64 steps, a step being a 1/32 note;
-* 50 bytes: 4 ticks a step, 48 steps, the **swung** grid of triplet 1/16s.
+* 50 bytes: 4 ticks a step, 48 steps, the swung grid of triplet 1/16s.
 
 **Flags bit 7 clear means three-beat**, and the engine gets 3/4 out of a pattern stored in 4/4 by
 *skipping a beat*: at `0x5111`, with the bit clear, a tick accumulator standing at `0x48` (72, the
 end of the first 3/4 bar) or `0xA8` (168) has `0x18` (24 ticks) added and the step index moved on to
-match, so the stored fourth beat of each bar is never played. The blocks with the bit clear are
-A`#6` and C`#7` - the **waltz** - and fills **5 and 6**, which is exactly the pair that only waltz
-cards use, and it explains the hole they leave on beat 4 of a 4/4 bar.
+match, so the stored fourth beat of each bar is never played. The blocks with the bit clear are the
+**waltz's** two and fills **5 and 6**, which is exactly the pair that only waltz cards use, and it
+explains the hole they leave on beat 4 of a 4/4 bar.
 
-**What a step byte says.** Each byte holds two 3-bit fields, the low nibble and the high one, and
-`0xD206` selects which the engine takes (`0x50D7`-`0x50E5`, `RRCA` four times for the high one,
-then `AND 7`). The 3 bits index an **eight-entry table of the chord's own notes**, at `0xD207`,
-which is part of the engine's 17-byte state block at `0xD1FD` and is refilled from the card's
-chord at `0x5165`. Measured on a C major card, the entries come out as YM2151 key codes:
+**Nothing in either kind of block is a pitch, and nothing is a note length.** A byte is a set of
+fields that hold their value, and **an event happens where a field changes** - that one rule runs
+the whole engine (`0x50F1` compares the field with the last one, kept at `0xD204`).
 
-| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
-|---|---|---|---|---|---|---|---|
-| note | silence | root | third | fifth | sixth | seventh | octave |
-| C major | - | C3 | E3 | G3 | A3 | A#3 | C4 |
+### The accompaniment byte
 
-So a pattern does not carry pitches at all; it carries chord-tone numbers, which is why one table
-serves every chord. **A note is struck only where the index changes** (`0x50F1` compares it with the
-last one, kept at `0xD204`), so a run of equal bytes is one held note and a 0 is a note off.
+Two patterns live in one byte: **the standard in the low nibble, the alternate in the high one**, and
+`0xD206` says which the engine reads - 1 for the low, 2 for the high (`0x50D7`-`0x50E5`, `RRCA` four
+times for the high one, then `AND 7`). **Bit 1 of the card's 3-bit header field** is what sets it:
+cards with `f3` of 2, 3, 6 or 7 get `0xD206` = 2 and `0xD352` = `0x83`, and 0, 1, 4 and 5 do not.
+That is the "two accompaniment patterns a rhythm" the machine advertises - one table, two nibbles.
 
-This is confirmed against sound, not just read: table C's low nibble is the **bass**. Its rock block
-reads root, root, off, root, fifth, fifth, off, fifth over the eight 1/8 notes of the bar, and the
-FM capture of that card has the bass playing C on beat 1, C on 2½, G on 3 and G on 4½ - four
-strikes, in those places.
+Inside a nibble:
 
-**Still open**, and the next thing to do:
+* **bits 0-2 are the bass**, as a number into an **eight-entry table of the chord's own notes** at
+  `0xD207` - part of the engine's 17-byte state block at `0xD1FD`, refilled from the card's chord at
+  `0x5165`. Measured on a C major card, the entries come back as YM2151 key codes:
 
-* **which part each table feeds.** Table C's low nibble is the bass; the high nibble is a second
-  part, and tables A and B - the ones copied to RAM - are not yet identified. The copy at `0x4C42`
-  writes three RAM bytes for every two it reads, so it is expanding something.
-* **the drums.** Nothing in these three tables looks like drum bits, yet a march card with no table
-  C reads still plays drums; the FM capture puts them on channels 6 and 7. The owner's ear says
-  there are only three drum sounds - a kick, a cymbal, and one odd one standing in for the snare and
-  everything else.
-* the rest of the engine's 17-byte state block, and how many parts run it.
+  | index | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+  |---|---|---|---|---|---|---|---|
+  | note | silence | root | third | fifth | sixth | seventh | octave |
+  | C major | - | C3 | E3 | G3 | A3 | A#3 | C4 |
 
-`playcard --rom-reads` and the ten probe cards are all it takes to pick this up again; the cards are
-built in a few lines with `playcard_encode.py` (see "Write a card that does one thing" below).
+  A pattern carries chord-tone numbers, which is why one table serves every chord, and the bass
+  sounds where the number changes.
+* **bit 3 strikes the chord part**, on its rising edge, one step later than the byte it is in.
+
+Both halves are confirmed against sound. Rock's standard nibble reads root, root, off, root, fifth,
+fifth, off, fifth over the bar and the capture plays C on beat 1, C on 2½, G on 3, G on 4½. Rhumba's
+standard chord bit rises at steps 4, 6, 12, 20 and 28 and the chords sound at 5, 7, 13, 21 and 29;
+with the header bit set, the same block's high nibble predicts strikes at 5, 9, 17, 21 and 29 and
+its bass walks root, third, fifth - and that is exactly what the alternate card plays.
+
+**The chord part's pitches never come from the pattern.** Channels 3 and 4 always key the same two
+notes - a root and a **flattened third**, C and E flat on a C chord - and the real chord tones come
+from the FM **multipliers**, which is why a capture shows 96 writes to `0x40`-`0x5F` against 24 key
+codes on those channels. Read a capture's key codes for the chord and you will read nonsense.
+
+### The drum byte
+
+A drum byte is a **five-bit mask in bits 7 to 3**, and a drum sounds where its bit rises. Bits 2, 1
+and 0 are the constant `0x02` in every byte of every drum block in the ROM, which `upa_extract.py`
+checks; what they are for is unknown.
+
+The drums are **two FM channels, each carrying two sounds** - algorithm 4 on both, so operators 1-2
+are one voice and 3-4 another - and the key-on's slot mask picks them, `3`, `C` or `F` for both at
+once. Five mask bits reach four sounds, because two of them share one:
+
+| bit | drum | where it plays | reaches |
+|---:|---|---|---|
+| 7 | **cymbal** | eighths in rock, sixteenths in 16-beat, every rhythm but the march and waltz | ch 6, operators 1-2 |
+| 6 | **second cymbal** | rhumba, samba, bossa-nova, slow-rock only | ch 6, operators 3-4 |
+| 5 | **kick** | beats 1 and 3 in rock, all four in march and disco | ch 7, operators 1-2 |
+| 4 | **latin drum** | rhumba and samba only | ch 7, operators 3-4 |
+| 3 | **snare** | the backbeat: beats 2 and 4 in every straight rhythm, the swung backbeat in swing and slow-rock | ch 7, operators 3-4 |
+
+The names come from where each bit plays, and the last two columns are why **the cartridge sounds as
+though it has three drums when its patterns are written for five**: the snare and the latin drum are
+the *same* FM voice here, so a samba's congas come out as snares. That is the owner's ear -
+"a kick, a cymbal, and a weird one which stands in for the snare and just about everything else" -
+accounted for in the ROM. The five are the same five the PCS-30 has (kick, conga, snare, open and
+closed hi-hat), so the patterns were written for a machine with a fuller drum set.
+
+**The drums are played by the SFG-01, not the cartridge.** Every FM write in a capture comes from one
+routine at `0x01EC` in page 0. At playback the cartridge **resamples** the drum block into a 96-slot
+buffer at `0xD0D0`, one slot every two ticks, by the loop at `0x4C42`: it writes each first byte of a
+pair twice and the second once, so a pair of 3-tick steps becomes 4 ticks and 2. Straight patterns
+put their strikes on even steps and are untouched by that; a pattern that uses the odd steps comes
+out **shuffled**, which is where a fill's fixed feel comes from. Fills are copied the same way, over
+the same buffer - so a fill replaces the drums and nothing else - and they use only three of the five
+bits: cymbal, kick and snare.
+
+**Still open**, and the next thing to do:**Still open**, and the next thing to do:
+
+* **what bits 2-0 of a drum byte are**, always `0x02` and never anything else.
+* **how the chord part's multipliers spell a chord** - the capture has them, and reading them is how
+  a renderer would know what the chord part actually sounds. Channels 3 and 4 only ever key a root
+  and a flattened third.
+* **the chord part's voicing and octave**, and whether the third channel of the three the
+  accompaniment holds (`ch5` is the bass, `ch3` and `ch4` the chord) ever does anything else.
+* the rest of the engine's 17-byte state block at `0xD1FD`, and how many parts run it: `0xD206` is
+  written three times at playback start, which suggests more than one.
+* the **resampling**'s exact effect on the 4-tick blocks, where the copy peeks the next byte.
+
+How it was measured, so it can be redone: `playcard --rom-reads` finds the tables, `--fm-pc` says
+which code wrote each FM register (all of it the SFG's `0x01EC`, which is how the drums were traced
+to the slot masks), `--watch 0xD1FF` gives the engine's own step grid to file each key-on under - far
+better than a guessed tempo - and `--ram-out` catches the resampled buffer. The probe cards are ten
+lines of `playcard_encode.py`: one rhythm, one chord held throughout, nothing else (see "Write a card
+that does one thing" below).
 
 ## If you pick up the accompaniment
 

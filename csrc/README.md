@@ -601,6 +601,22 @@ how busy they are, and `0x5731`-`0x5772`, read by `LD D,(HL)` at `0x50D6` once
 a step, is the bass part of one rhythm. See "The accompaniment patterns" in
 `../HANDOFF.md`.
 
+`--fm-pc FILE` writes every FM register write with **the address that made it**, which `--watch`
+cannot: the OPM's own page is handled before the watch hook. It answers "who plays this?" - and on
+this machine the answer is always the same, `0x01EC`, because the cartridge hands its music to the
+SFG-01's driver and that driver does all the writing. What it is good for is the register *pattern*:
+it is how the drums were pinned to key-on slot masks, two drum sounds a channel, and how the chord
+part was caught rewriting its multipliers 96 times against 24 key codes.
+
+```bash
+./playcard card.bin -o card.fmlog --quiet --fm-pc card.fmpc
+```
+
+```
+# time reg val pc
+17.114231 08 1E 01EC
+```
+
 Telling a data read from an instruction byte is exact rather than a guess,
 because of where the Z80 core leaves PC: a one-byte operand is read at `PC - 1`
 and a two-byte one at `PC - 2` and `PC - 1`, so those two addresses are the

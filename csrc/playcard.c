@@ -153,6 +153,7 @@ static const char *ROM_CART = "Play Card System (UPA-01) (1985) (Yamaha) (J).rom
 typedef struct {
     unsigned long cyc;
     uint8_t reg, val;
+    uint16_t pc;                   /* who wrote it, for --fm-pc */
 } fmwrite;
 
 /* A read or a write of an address somebody asked to watch.  `pc` is the CPU's
@@ -400,6 +401,7 @@ static void wr(void *ud, uint16_t a, uint8_t v)
             }
             m->cap[m->ncap].reg = m->opmreg;
             m->cap[m->ncap].val = v;
+            m->cap[m->ncap].pc = m->cpu.pc;
             m->ncap++;
             opm_write(m, m->opmreg, v);
         }
@@ -1071,6 +1073,7 @@ int main(int argc, char **argv)
     const char *psgout = NULL;
     const char *watchout = NULL;
     const char *romreadout = NULL;
+    const char *fmpcout = NULL;
     double romfrom = 0.0;
     uint16_t watch[MAXWATCH];
     int nwatch = 0;
@@ -1114,6 +1117,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--pc-from") && i + 1 < argc)
             pcfrom = atof(argv[++i]);
         else if (!strcmp(argv[i], "--rom-reads") && i + 1 < argc) romreadout = argv[++i];
+        else if (!strcmp(argv[i], "--fm-pc") && i + 1 < argc) fmpcout = argv[++i];
         else if (!strcmp(argv[i], "--rom-from") && i + 1 < argc)
             romfrom = atof(argv[++i]);
         else if (!strcmp(argv[i], "--ram-out") && i + 1 < argc) ramout = argv[++i];
@@ -1217,6 +1221,7 @@ int main(int argc, char **argv)
                 "the tables\n"
                 "                   the firmware indexes, and what reads them\n"
                 "   --rom-from S    log no ROM read before S seconds\n"
+                "   --fm-pc F       every FM write to F, with the PC that made it\n"
                 "   --trace ADDR    print registers and stack whenever the cartridge\n"
                 "                   reaches ADDR, in hex (repeatable)\n");
             return 2;
@@ -1502,6 +1507,20 @@ int main(int argc, char **argv)
             m->pchist[bi] = 0;
             shown += best;
         }
+    }
+
+    if (fmpcout) {
+        /* Every FM write with the address that made it: what --watch cannot
+         * see, because the OPM's own page is handled before the watch hook. */
+        f = fopen(fmpcout, "w");
+        if (!f) { fprintf(stderr, "playcard: cannot write %s\n", fmpcout); return 1; }
+        fprintf(f, "# time reg val pc\n");
+        for (k = 0; k < m->ncap; k++)
+            fprintf(f, "%.6f %02X %02X %04X\n", m->cap[k].cyc / CLOCK,
+                    m->cap[k].reg, m->cap[k].val, m->cap[k].pc);
+        fclose(f);
+        if (!quiet) printf("  %ld FM writes with their PC written to %s\n",
+                           m->ncap, fmpcout);
     }
 
     if (m->romread) {

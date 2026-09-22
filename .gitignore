@@ -24,8 +24,10 @@ Roms/*
 # Yamaha's accompaniment and drum patterns.  The patterns are the instrument's
 # musical content, not a fact about the file format, so they stay out - but the
 # code that reads them does not have to.  pcs30_extract.py rebuilds this file
-# from a PCS-30 ROM you own; everything else reads it and never sees the ROM.
+# from a PCS-30 ROM you own, upa_extract.py the same from a cartridge ROM;
+# everything else reads those files and never sees a ROM.
 pcs30-tables.json
+upa-tables.json
 patterns/
 examples/
 
