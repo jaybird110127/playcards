@@ -578,6 +578,37 @@ business. Careful what you conclude from it: the busiest addresses on this
 machine are `0x1478`-`0x147D`, and that is the SFG-01 scanning its music
 keyboard, which it does whatever else is happening.
 
+`--rom-reads FILE` answers the other half of that question: **which ROM bytes
+does the firmware read as data rather than execute?** Every table it indexes is
+in the file, one line an address, with how many times, when first and last,
+which slots it was read out of, and the first four addresses the reads came
+from. `--rom-from S` starts the log at second S, which is how to leave the
+boot and the card swipe out of it.
+
+```bash
+./playcard card.bin -o card.fmlog --quiet --rom-reads card.reads --rom-from 15
+```
+
+```
+# addr slots count first last readers
+5731 2 12 17.114231 55.887019 50D7
+```
+
+A table then shows up as a run of neighbouring addresses read by the same one
+or two instructions, and a pointer table as a handful of addresses read once
+each. It is how the accompaniment pattern tables were found: sort the runs by
+how busy they are, and `0x5731`-`0x5772`, read by `LD D,(HL)` at `0x50D6` once
+a step, is the bass part of one rhythm. See "The accompaniment patterns" in
+`../HANDOFF.md`.
+
+Telling a data read from an instruction byte is exact rather than a guess,
+because of where the Z80 core leaves PC: a one-byte operand is read at `PC - 1`
+and a two-byte one at `PC - 2` and `PC - 1`, so those two addresses are the
+instruction stream and everything else is data. The cost is that a table read
+through a pointer that happens to hold `PC - 1` or `PC - 2` is missed, which in
+a ROM - where a table sits past the code that reads it - has no occasion to
+happen. RAM is left out: `--watch` covers that, and with the PC that did it.
+
 `--ram-out FILE` dumps `0xC000`-`0xFFFF` a moment after the start key, and
 `--ram-at S` says how long a moment. Two runs that differ in one thing give two
 dumps that differ in a handful of bytes, which is the quickest way to find the

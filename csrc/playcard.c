@@ -165,6 +165,17 @@ typedef struct {
     uint8_t val, write;
 } memtouch;
 
+/* One ROM address the firmware read as DATA rather than executed: how often,
+ * when first and last, which slots it was read out of, and the first few
+ * addresses the reads came from.  A table shows up here as a run of adjacent
+ * addresses read by the same one or two instructions. */
+#define ROMPCS 4
+typedef struct {
+    unsigned long count, first, last;
+    uint16_t pc[ROMPCS];
+    uint8_t npc, slots;            /* slots is a bit a slot */
+} romread;
+
 typedef struct {
     z80 cpu;
     uint8_t mem[0x10000];          /* what the CPU sees */
@@ -235,6 +246,9 @@ typedef struct {
     unsigned long *pchist;         /* one count an address, or NULL */
     unsigned long pcfrom;          /* not before this cycle */
     int pctick;
+
+    romread *romread;              /* one entry an address, or NULL */
+    unsigned long romfrom;         /* not before this cycle */
 } msx;
 
 /* Reads go through here on every fetch, so keep it a straight-line compare
@@ -288,11 +302,46 @@ static void map_page(msx *m, int page, int slot, int force)
         publish_status(m);
 }
 
+/* Every read the firmware makes of a ROM address it is not executing.  What
+ * separates an instruction byte from a data byte is where PC is: the Z80 core
+ * reads a one-byte operand at the old PC having already stepped past it (PC -
+ * 1), and a two-byte one after stepping past both (PC - 2 and PC - 1).  So
+ * those two addresses are the instruction stream and everything else is data.
+ * The cost of putting it this way is that a genuine table read through a
+ * pointer that happens to hold PC - 1 or PC - 2 is missed; in a ROM, where a
+ * table sits past the code that reads it, that has no occasion to happen. */
+static void note_romread(msx *m, uint16_t a)
+{
+    romread *r;
+    int i, slot;
+    if (m->cpu.cyc < m->romfrom)
+        return;
+    if (a == (uint16_t)(m->cpu.pc - 1) || a == (uint16_t)(m->cpu.pc - 2))
+        return;
+    if (m->writable[a >> 14])
+        return;                    /* RAM, which --watch already covers */
+    r = &m->romread[a];
+    if (!r->count)
+        r->first = m->cpu.cyc;
+    r->last = m->cpu.cyc;
+    r->count++;
+    slot = m->page[a >> 14];
+    if (slot >= 0 && slot < 8)
+        r->slots |= (uint8_t)(1 << slot);
+    for (i = 0; i < r->npc; i++)
+        if (r->pc[i] == m->cpu.pc)
+            return;
+    if (r->npc < ROMPCS)
+        r->pc[r->npc++] = m->cpu.pc;
+}
+
 static uint8_t rd(void *ud, uint16_t a)
 {
     msx *m = (msx *)ud;
     if (m->nwatch)
         note_touch(m, a, m->mem[a], 0);
+    if (m->romread)
+        note_romread(m, a);
     return m->mem[a];
 }
 
@@ -1021,6 +1070,8 @@ int main(int argc, char **argv)
     double screenat = -1.0;        /* < 0 means "when the card ends" */
     const char *psgout = NULL;
     const char *watchout = NULL;
+    const char *romreadout = NULL;
+    double romfrom = 0.0;
     uint16_t watch[MAXWATCH];
     int nwatch = 0;
     uint16_t trace[MAXWATCH];
@@ -1062,6 +1113,9 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--f5")) free_tempo = 1;
         else if (!strcmp(argv[i], "--pc-from") && i + 1 < argc)
             pcfrom = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--rom-reads") && i + 1 < argc) romreadout = argv[++i];
+        else if (!strcmp(argv[i], "--rom-from") && i + 1 < argc)
+            romfrom = atof(argv[++i]);
         else if (!strcmp(argv[i], "--ram-out") && i + 1 < argc) ramout = argv[++i];
         else if (!strcmp(argv[i], "--ram-at") && i + 1 < argc) ramat = atof(argv[++i]);
         else if (!strcmp(argv[i], "--screen") && i + 1 < argc) screenout = argv[++i];
@@ -1159,6 +1213,10 @@ int main(int argc, char **argv)
                 "   --watch ADDR    report every read and write of ADDR "
                 "(repeatable)\n"
                 "   --watch-out F   where the watch report goes\n"
+                "   --rom-reads F   log every ROM address read as DATA to F: "
+                "the tables\n"
+                "                   the firmware indexes, and what reads them\n"
+                "   --rom-from S    log no ROM read before S seconds\n"
                 "   --trace ADDR    print registers and stack whenever the cartridge\n"
                 "                   reaches ADDR, in hex (repeatable)\n");
             return 2;
@@ -1198,6 +1256,8 @@ int main(int argc, char **argv)
             "   --watch ADDR    report every read and write of ADDR "
             "(repeatable)\n"
             "   --watch-out F   where the watch report goes\n"
+            "   --rom-reads F   log every ROM address read as DATA to F\n"
+            "   --rom-from S    log no ROM read before S seconds\n"
                 "   --trace ADDR    print registers and stack whenever the cartridge\n"
                 "                   reaches ADDR, in hex (repeatable)\n");
         return 2;
@@ -1220,6 +1280,10 @@ int main(int argc, char **argv)
     for (i = 0; i < nwatch; i++)
         m->watch[i] = watch[i];
     m->nwatch = nwatch;
+    if (romreadout) {
+        m->romread = (romread *)calloc(0x10000, sizeof *m->romread);
+        m->romfrom = (unsigned long)(romfrom * CLOCK);
+    }
     if (pcfrom >= 0.0) {
         m->pchist = (unsigned long *)calloc(0x10000, sizeof *m->pchist);
         m->pcfrom = (unsigned long)(pcfrom * CLOCK);
@@ -1438,6 +1502,29 @@ int main(int argc, char **argv)
             m->pchist[bi] = 0;
             shown += best;
         }
+    }
+
+    if (m->romread) {
+        long naddr = 0;
+        f = fopen(romreadout, "w");
+        if (!f) { fprintf(stderr, "playcard: cannot write %s\n", romreadout); return 1; }
+        fprintf(f, "# every ROM address read as data (not executed) after %.3f s\n", romfrom);
+        fprintf(f, "# addr slots count first last readers\n");
+        for (k = 0; k < 0x10000; k++) {
+            romread *r = &m->romread[k];
+            int p;
+            if (!r->count)
+                continue;
+            naddr++;
+            fprintf(f, "%04lX %X %lu %.6f %.6f", k, r->slots, r->count,
+                    r->first / CLOCK, r->last / CLOCK);
+            for (p = 0; p < r->npc; p++)
+                fprintf(f, " %04X", r->pc[p]);
+            fprintf(f, "\n");
+        }
+        fclose(f);
+        if (!quiet) printf("  %ld ROM addresses read as data, written to %s\n",
+                           naddr, romreadout);
     }
 
     if (m->nwatch) {

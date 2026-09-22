@@ -999,9 +999,80 @@ you name. Do not try to get the key from the notes: C major, A minor, G mixolydi
 the same seven notes, so a scale fit cannot tell them apart, and this is precisely how *9 to 5*
 (written in G, sounds in C) was written up as C for a week.
 
+## The accompaniment patterns
+
+**Found, 2026-09-22: the cartridge's own pattern tables are in the cartridge ROM**, not the SFG-01,
+and their shape is measured rather than guessed. The way in was a new emulator option, `--rom-reads`
+(see `csrc/README.md`): it logs every ROM address the firmware reads as *data* rather than executes,
+with the instruction that read it, so a table announces itself as a run of neighbouring addresses
+read by one instruction. Ten throw-away cards - one a rhythm, each holding a single chord and
+playing almost nothing of its own - then said which block belongs to which selection.
+
+**Three pointer tables**, back to back, each a little-endian word an entry, with null entries where
+nothing is selected:
+
+| table | at | entries | indexed by |
+|---|---|---|---|
+| A | `0x523B` | 10 and a null | the card's **raw rhythm** value, 0-9 |
+| B | `0x5251` | 6, entries 1-6 | the **fill** number from the escape opcode, 1-6 |
+| C | `0x5261` | 10, entries 1-10 | the raw rhythm **+ 1** |
+
+The blocks they name run back to back from `0x5279` to `0x589C`, 1572 bytes in all, and the code
+resumes immediately after. Measured on the cards: rhythm 4 (rock) reads A`#4` and C`#5`, rhythm 8
+(march) A`#8` and C`#9`, and Röslein, which has fill marks, reads B`#1` and B`#2`. Tables A and B
+are *copied into RAM* at `0xD0D0` when playback starts, by the loop at `0x4C42`; table C is read
+live, one byte a step, by `LD D,(HL)` at `0x50D6`.
+
+**A block is two bars of 4/4 - 192 ticks - however it is cut up.** Two header bytes come first,
+flags and **ticks a step**, and then the steps, one byte each:
+
+* 66 bytes: 3 ticks a step, 64 steps, a step being a 1/32 note;
+* 50 bytes: 4 ticks a step, 48 steps, the **swung** grid of triplet 1/16s.
+
+**Flags bit 7 clear means three-beat**, and the engine gets 3/4 out of a pattern stored in 4/4 by
+*skipping a beat*: at `0x5111`, with the bit clear, a tick accumulator standing at `0x48` (72, the
+end of the first 3/4 bar) or `0xA8` (168) has `0x18` (24 ticks) added and the step index moved on to
+match, so the stored fourth beat of each bar is never played. The blocks with the bit clear are
+A`#6` and C`#7` - the **waltz** - and fills **5 and 6**, which is exactly the pair that only waltz
+cards use, and it explains the hole they leave on beat 4 of a 4/4 bar.
+
+**What a step byte says.** Each byte holds two 3-bit fields, the low nibble and the high one, and
+`0xD206` selects which the engine takes (`0x50D7`-`0x50E5`, `RRCA` four times for the high one,
+then `AND 7`). The 3 bits index an **eight-entry table of the chord's own notes**, at `0xD207`,
+which is part of the engine's 17-byte state block at `0xD1FD` and is refilled from the card's
+chord at `0x5165`. Measured on a C major card, the entries come out as YM2151 key codes:
+
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| note | silence | root | third | fifth | sixth | seventh | octave |
+| C major | - | C3 | E3 | G3 | A3 | A#3 | C4 |
+
+So a pattern does not carry pitches at all; it carries chord-tone numbers, which is why one table
+serves every chord. **A note is struck only where the index changes** (`0x50F1` compares it with the
+last one, kept at `0xD204`), so a run of equal bytes is one held note and a 0 is a note off.
+
+This is confirmed against sound, not just read: table C's low nibble is the **bass**. Its rock block
+reads root, root, off, root, fifth, fifth, off, fifth over the eight 1/8 notes of the bar, and the
+FM capture of that card has the bass playing C on beat 1, C on 2½, G on 3 and G on 4½ - four
+strikes, in those places.
+
+**Still open**, and the next thing to do:
+
+* **which part each table feeds.** Table C's low nibble is the bass; the high nibble is a second
+  part, and tables A and B - the ones copied to RAM - are not yet identified. The copy at `0x4C42`
+  writes three RAM bytes for every two it reads, so it is expanding something.
+* **the drums.** Nothing in these three tables looks like drum bits, yet a march card with no table
+  C reads still plays drums; the FM capture puts them on channels 6 and 7. The owner's ear says
+  there are only three drum sounds - a kick, a cymbal, and one odd one standing in for the snare and
+  everything else.
+* the rest of the engine's 17-byte state block, and how many parts run it.
+
+`playcard --rom-reads` and the ten probe cards are all it takes to pick this up again; the cards are
+built in a few lines with `playcard_encode.py` (see "Write a card that does one thing" below).
+
 ## If you pick up the accompaniment
 
-That is the remaining work. Notes toward it:
+Older notes toward the same work, all still good:
 
 - **The card's inputs to the pattern generator are now fully known**: the rhythm field picks one of
   ten styles, and the header's 3-bit field picks the standard or alternate pattern of that style.
