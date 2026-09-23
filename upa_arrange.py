@@ -62,17 +62,24 @@ turns the lot off and plays what the cartridge plays.
   seventh on a seventh chord, in the octave band that ends at C5, and a bass root
   of C2 that drops an octave from G upwards.
 
-* **A chord change mid-bar forces the next bass note to the new root**, whatever
-  the pattern holds at that step, the flag waiting through rests so the root
-  lands on the next actual strike. That is the PCS-30's own rule (its ROM
-  0x173E), and it is what keeps the bass line following the harmony.
+* **A chord change part-way through a pattern forces the next bass note to the
+  new root**, whatever the pattern holds at that step, the flag waiting through
+  rests so the root lands on the next actual strike. That is the PCS-30's own
+  rule (its ROM 0x173E), and it is what keeps the bass line following the
+  harmony. Two qualifications, both learned by listening:
 
-  **Mid-bar only, and only until the bar line.** A chord that changes ON a bar
-  line has the pattern starting afresh under it and needs no help, and forcing
-  the root there wrecks any pattern whose bar does not begin on the root: the
-  march's alternate bass opens every bar on the **octave**, and PC-100 Do Re Mi,
-  whose second verse plays twenty bars of it, lost that on every chord change
-  until this was narrowed.
+  **The unit is the PATTERN, not the bar**, because a pattern is two bars. Szla
+  Dzieweczka is a waltz whose intro changes chord every bar, and the waltz
+  pattern strikes the root in its first bar and the **fifth** in its second - so
+  every other chord of that intro never sounded its own root at all. Only a chord
+  arriving at the pattern's own first step needs no help, because the pattern
+  starts afresh under it anyway.
+
+  **The octave is left alone.** Where the pattern is striking the octave above
+  the root, that is the root's own note and the figure of any pattern built on
+  it, so it stands: the march's alternate bass opens every bar there, and Do Re
+  Mi's second verse wants the octave and not the low root where a bar of D minor
+  becomes G7 on beat 3.
 
 * **A fill's feel follows the rhythm.** The cartridge stores each fill in one
   feel and plays it that way whatever the rhythm - fills 1 and 2 straight, 3 and
@@ -146,6 +153,7 @@ PCS_BITS = {4: 'cymbal-short', 3: 'cymbal-long', 2: 'snare', 1: 'latin', 0: 'kic
 # asymmetry of its kind in any of the twenty patterns.  `--as-is` leaves it.
 CHORD_FIX = {4: {54: -2}}               # bossa-nova, block step 54, two earlier
 
+OCTAVE_TONE = 6                         # the chord-tone number for the octave
 CHORD_VEL = 86
 DRUM_LEN = 6                            # a sixteenth; long enough for any kit
 
@@ -296,14 +304,13 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
     # ---- the accompaniment: bass where its number changes, chord where its bit
     # rises.  The cartridge sends the chord a step later than this; see the
     # docstring.
-    prev_chord, prev_root, pending = None, None, None
+    prev_chord, prev_root, pending = None, None, False
     fix = {} if as_is else CHORD_FIX.get(rhythm, {})
     for bar in range(nbars):
         t0 = bar * bar_ticks
         here = [(t, v) for t, v in marks if t0 <= t < t0 + bar_ticks]
         if locked or any(v == 7 for _, v in here):
             alt_bars += 1
-        pending = None                  # a bar line ends any wait for the root
         for i, (half, st, k) in enumerate(acc_play):
             if half != bar % 2:
                 continue
@@ -333,27 +340,36 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
                 bass_v.off(tick)
                 chord_v.off(tick)
             prev_chord = (root, quality)
-            if prev_root is not None and root != prev_root and tick != t0:
-                # The chord has moved MID-BAR, so the next bass note to sound is
-                # the new ROOT rather than whatever the pattern holds at that
-                # step - the PCS-30's own rule (its ROM 0x173E).  The flag waits
-                # through rests, so the root lands on the next actual strike.
+            if prev_root is not None and root != prev_root \
+                    and not (bar % 2 == 0 and st == 0):
+                # The chord has moved part-way through the PATTERN, so the next
+                # bass note to sound is the new ROOT rather than whatever the
+                # pattern holds at that step - the PCS-30's own rule (its ROM
+                # 0x173E).  The flag waits through rests, so the root lands on
+                # the next actual strike.
                 #
-                # Only mid-bar, and only until the bar line.  A chord that
-                # changes ON a bar line has the pattern starting afresh under it
-                # and needs no help, and forcing the root there wrecks any
-                # pattern whose bar does not begin on the root: the march's
-                # alternate bass opens each bar on the OCTAVE, and PC-100 Do Re
-                # Mi, whose second verse uses it, lost that on every chord
-                # change until this was narrowed.
-                pending = t0 + bar_ticks
+                # The unit is the PATTERN and not the bar, because a pattern is
+                # two bars: Szla Dzieweczka is a waltz whose intro changes chord
+                # every bar, and the waltz pattern strikes the root in its first
+                # bar and the FIFTH in its second - so every other chord of that
+                # intro never sounded its own root at all.  Only a chord arriving
+                # at the pattern's own first step needs no help, because there
+                # the pattern starts afresh under it anyway.
+                pending = True
             prev_root = root
 
             if now & 7 and (now & 7) != (was & 7):
                 tone = now & 7
-                if pending is not None and tick < pending and not as_is:
-                    tone, pending = 1, None
-                    roots_forced += 1
+                if pending and not as_is:
+                    # ...unless the pattern is striking the OCTAVE above the
+                    # root, which is the root's own note and is the figure in
+                    # any pattern built on it: the march's alternate bass opens
+                    # every bar there, and Do Re Mi's second verse wants G3 and
+                    # not G2 where a bar of D minor becomes G7 on beat 3.
+                    if tone != OCTAVE_TONE:
+                        tone = 1
+                        roots_forced += 1
+                    pending = False
                 n = U.bass_note(root, tone, quality)
                 if n is not None:
                     bass_v.strike(tick, n)      # holds until the next strike
