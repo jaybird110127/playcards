@@ -62,10 +62,17 @@ turns the lot off and plays what the cartridge plays.
   seventh on a seventh chord, in the octave band that ends at C5, and a bass root
   of C2 that drops an octave from G upwards.
 
-* **A chord change forces the next bass note to the new root**, whatever the
-  pattern holds at that step, and the flag waits through rests so the root lands
-  on the next actual strike. That is the PCS-30's own rule (its ROM 0x173E), and
-  it is what keeps the bass line following the harmony.
+* **A chord change mid-bar forces the next bass note to the new root**, whatever
+  the pattern holds at that step, the flag waiting through rests so the root
+  lands on the next actual strike. That is the PCS-30's own rule (its ROM
+  0x173E), and it is what keeps the bass line following the harmony.
+
+  **Mid-bar only, and only until the bar line.** A chord that changes ON a bar
+  line has the pattern starting afresh under it and needs no help, and forcing
+  the root there wrecks any pattern whose bar does not begin on the root: the
+  march's alternate bass opens every bar on the **octave**, and PC-100 Do Re Mi,
+  whose second verse plays twenty bars of it, lost that on every chord change
+  until this was narrowed.
 
 * **A fill's feel follows the rhythm.** The cartridge stores each fill in one
   feel and plays it that way whatever the rhythm - fills 1 and 2 straight, 3 and
@@ -289,13 +296,14 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
     # ---- the accompaniment: bass where its number changes, chord where its bit
     # rises.  The cartridge sends the chord a step later than this; see the
     # docstring.
-    prev_chord, prev_root, pending = None, None, False
+    prev_chord, prev_root, pending = None, None, None
     fix = {} if as_is else CHORD_FIX.get(rhythm, {})
     for bar in range(nbars):
         t0 = bar * bar_ticks
         here = [(t, v) for t, v in marks if t0 <= t < t0 + bar_ticks]
         if locked or any(v == 7 for _, v in here):
             alt_bars += 1
+        pending = None                  # a bar line ends any wait for the root
         for i, (half, st, k) in enumerate(acc_play):
             if half != bar % 2:
                 continue
@@ -325,18 +333,26 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
                 bass_v.off(tick)
                 chord_v.off(tick)
             prev_chord = (root, quality)
-            if prev_root is not None and root != prev_root:
-                # The chord has moved, so the next bass note to sound is the new
-                # ROOT rather than whatever the pattern holds at that step - the
-                # PCS-30's own rule (its ROM 0x173E).  The flag waits through
-                # rests, so the root lands on the next actual strike.
-                pending = True
+            if prev_root is not None and root != prev_root and tick != t0:
+                # The chord has moved MID-BAR, so the next bass note to sound is
+                # the new ROOT rather than whatever the pattern holds at that
+                # step - the PCS-30's own rule (its ROM 0x173E).  The flag waits
+                # through rests, so the root lands on the next actual strike.
+                #
+                # Only mid-bar, and only until the bar line.  A chord that
+                # changes ON a bar line has the pattern starting afresh under it
+                # and needs no help, and forcing the root there wrecks any
+                # pattern whose bar does not begin on the root: the march's
+                # alternate bass opens each bar on the OCTAVE, and PC-100 Do Re
+                # Mi, whose second verse uses it, lost that on every chord
+                # change until this was narrowed.
+                pending = t0 + bar_ticks
             prev_root = root
 
             if now & 7 and (now & 7) != (was & 7):
                 tone = now & 7
-                if pending and not as_is:
-                    tone, pending = 1, False
+                if pending is not None and tick < pending and not as_is:
+                    tone, pending = 1, None
                     roots_forced += 1
                 n = U.bass_note(root, tone, quality)
                 if n is not None:

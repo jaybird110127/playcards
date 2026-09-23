@@ -1172,8 +1172,14 @@ turns the lot off and plays what the cartridge plays.
   found, twice - it survived the first pass because a sixteenth-offbeat chord is still on the grid,
   and a grid check cannot tell a syncopation from a mistake.
 * **The chord is voiced for a synthesizer**, per the section above.
-* **A chord change forces the next bass note to the new root**, whatever the pattern holds there,
-  the flag waiting through rests - the PCS-30's own rule, its ROM `0x173E`.
+* **A chord change mid-bar forces the next bass note to the new root**, whatever the pattern holds
+  there, the flag waiting through rests - the PCS-30's own rule, its ROM `0x173E`. **Mid-bar only,
+  and only until the bar line**: a chord that changes on a bar line has the pattern starting afresh
+  under it, and forcing the root there wrecks any pattern whose bar does not begin on the root. The
+  march's alternate bass opens every bar on the **octave**, and PC-100 Do Re Mi, whose second verse
+  plays twenty bars of it under mark 7, lost that on every chord change until the rule was narrowed -
+  which is the second time in this project that a rule taken from one machine's ROM has had to be
+  narrowed to fit another's data.
 * **A fill's feel follows the rhythm.** The cartridge plays each fill in the feel it is stored in -
   1 and 2 straight, 3 and 4 swung, 5 and 6 for the waltz - and the PC-100 and PCS-30 play any fill
   in the rhythm's. The authoring system chose to match: over the corpus, fills 1 and 2 appear on the
