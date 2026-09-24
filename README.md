@@ -242,7 +242,7 @@ How the tables are laid out, and how they were found and measured, is in the &ld
 
 ## The PCS-30
 
-The PCS-30 is a different Playcard-capable keyboard, and the source of the accompaniment this project uses. How it makes its sound &mdash; its sound chip, voices, filters, drums and tempo, read from its ROM and measured from recordings of a real one &mdash; is in [pcs30-sound.md](pcs30-sound.md).
+The PCS-30 is a different Playcard-capable keyboard, and one of the two sources of accompaniment this project can play a card with &mdash; the cartridge's own are above. How it makes its sound &mdash; its sound chip, voices, filters, drums and tempo, read from its ROM and measured from recordings of a real one &mdash; is in [pcs30-sound.md](pcs30-sound.md).
 
 Run this once and the rest work without a ROM:
 

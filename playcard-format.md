@@ -31,7 +31,7 @@ wherever that distinction matters; where it says only *the card*, the claim is a
 | | what it is | what it contributes here |
 |---|---|---|
 | **PC-100** (1982) | the Yamaha keyboard these cards were written for | nearly every finding that is "known by ear". It has **no fill or drum controls at all**, so anything the arrangement does came off the card and not off a panel |
-| **PCS-30** (1984) | a second Playcard-capable keyboard | a **second, independent implementation** — the only way to tell the format apart from one machine's reading of it. Its accompaniment patterns are also the ones this project's arranger uses |
+| **PCS-30** (1984) | a second Playcard-capable keyboard | a **second, independent implementation** — the only way to tell the format apart from one machine's reading of it. Both machines' accompaniment patterns are decoded, and either can play a card |
 | **UPA-01** (1985) | the *Play Card System* cartridge for MSX, read through the **CR-01** reader, in a **CX5M** with an **SFG-01** or **SFG-05** FM module | nearly all the ROM-level detail, every YM2151 register capture, and every emulator run. It is the machine whose code can be disassembled, stepped and watched |
 | **PC-1000** (1983) | a later Yamaha keyboard with a Chord Lesson feature | context for one hypothesis about the chord chart, which the corpus then refused |
 

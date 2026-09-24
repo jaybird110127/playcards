@@ -10,7 +10,9 @@
 What comes out is what a PCS-30 would play from this card, not "how the card
 sounds": the melody and obbligato are the card's, and the three accompaniment
 parts are that keyboard's own patterns.  A PC-100 - the machine these cards
-were written for - has its own, and they have never been extracted.
+were written for - has its own, and those have never been extracted.  The
+CARTRIDGE's have been, since September 2026: `upa_arrange.py` is this tool with
+those patterns, and shares most of its machinery.
 
 Five parts: melody, obbligato, bass, guitar, and drums on channel 10.
 

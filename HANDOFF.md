@@ -88,9 +88,12 @@ as an ordinary date. All 267 decode to real calendar days, 1982-05-14 to 1985-12
 sharing a date carry identical trailers. **Which** date is not established: it may be when the card
 was physically made, or when its data was authored or compiled. Do not call it a pressing date.
 
-**Not done:** the UPA-01's bass and drum *patterns* themselves. The card selects and gates them but
-does not contain them — the firmware generates them from rhythm pattern tables, probably in the
-SFG-01 ROM or the cartridge. That is the one substantial piece of work left on the cartridge.
+**Done, 2026-09-22: the UPA-01's own bass, chord and drum *patterns*.** The card selects and gates
+them but does not contain them, and they turned out to be in the **cartridge** rather than the SFG-01:
+ten drum patterns, six drum fills and ten accompaniment patterns, decoded down to the bit. See "The
+accompaniment patterns" below for the layout, the addresses and how it was measured; `upa_extract.py`
+lifts them out of a ROM you own, `upa_rhythm.py` prints them, and `upa_arrange.py` plays a card with
+them.
 
 **The two machines disagree about the unplayable-root entries `0x13`, `0x23` and `0x33`.** They are
 **not a second spelling of the mute** — see the fuller account below, and `playcard-format.md`. The
@@ -788,8 +791,7 @@ position 17 in bar 2 of one and bar 17 of the other, and the record arrives at t
 43 seconds of nothing at the melody's. So a compiler places chords by obbligato index and can ignore
 the melody entirely.
 
-The other open items are the UPA-01's own accompaniment patterns and which of the six stored PCS-30
-patterns each mark names. **The third ducked part at `0xD349` is answered as far as this cartridge
+The other open item is which of the six stored PCS-30 patterns each mark names. **The third ducked part at `0xD349` is answered as far as this cartridge
 goes: it is written and never read.** `csrc/playcard --watch` reports every access to an address with
 the PC that made it, and across all 261 cards plus the three two-sided sets, the level field of
 block 2 was read by live code **zero times**, against 57,827 reads of the obbligato's. The reason is
@@ -1232,14 +1234,16 @@ better than a guessed tempo - and `--ram-out` catches the resampled buffer. The 
 lines of `playcard_encode.py`: one rhythm, one chord held throughout, nothing else (see "Write a card
 that does one thing" below).
 
-## If you pick up the accompaniment
+## The notes that led to the patterns
 
-Older notes toward the same work, all still good:
+These were written while the pattern tables were still missing, and they are kept because every one of
+them was used to find them - and because the same habits apply to whatever is chased next. The work
+itself is done: see "The accompaniment patterns" above.
 
 - **The card's inputs to the pattern generator are now fully known**: the rhythm field picks one of
   ten styles, and the header's 3-bit field picks the standard or alternate pattern of that style.
   Nothing else on the card selects a pattern, so any capture can be attributed to a known
-  selection — which is exactly what the pattern tables have to reproduce.
+  selection — which is what made ten one-chord probe cards enough to identify every block.
 - The accompaniment occupies **three FM channels** (chord and bass), cleanly separated from the
   melody's and obbligato's three and the two single-pitch percussion channels. On Take the A Train:
   ch0/ch1/ch2 melody and obbligato, ch3/ch4/ch5 chord and bass, ch6/ch7 drums.
@@ -1296,9 +1300,10 @@ Older notes toward the same work, all still good:
   that system as though it were a keyboard.
 - **The chords are known.** The section table's values decode to `(type << 4) | YM2151 note code`,
   types 0–3 being major, minor, seventh, minor seventh. So a capture can now be checked against the
-  chord the card asked for, bar by bar — which is what makes the pattern tables tractable.
+  chord the card asked for, bar by bar — which is what made the pattern tables tractable.
 - Capturing the FM chip *does* produce chords, bass and drums — imperfectly (chords drop notes,
-  spurious drum hits) but enough to work out what the patterns are. **Capture timing from
+  spurious drum hits) but enough to work out what the patterns are, and in the end it was a capture
+  beside the tables that confirmed every field of them. **Capture timing from
   `csrc/playcard` can now be trusted** to within the YM2151 timer's own resolution, a few tenths of
   a percent: characterised on 2026-09-21 across the whole tempo range. Before that date every
   capture it made ran 4% slow — its playback loop restarted timer A's count every quarter second
@@ -1309,4 +1314,5 @@ Older notes toward the same work, all still good:
   — see the trap below.
 - A good first experiment: hand-build a minimal card that selects one rhythm and holds one chord,
   feed it through `fake_cr01.tcl`, and capture what the firmware plays. The user suggested exactly
-  this and it is the cleanest way in.
+  this, and it is what worked: ten such cards, one a rhythm, are what attributed every block to its
+  selection. Keep the recipe for the next machine.
