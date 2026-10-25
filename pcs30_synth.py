@@ -301,8 +301,11 @@ def render(cards, out, duck_db=-6.0, arranger='pcs30'):
     # octave is what the real keyboards do, and stays.)
     octave = {0: -12 if P.voice(P.MELODY_VOICE, h['field4']) == 'organ' else 0,
               1: 0, 2: 0, 3: 0}
-    if arranger == 'upa':
-        octave[0] = 0                 # upa_arrange leaves the organ where the card puts it
+    # Both arrangers raise the organ an octave for General MIDI synths, so both
+    # need it taken back out here.  This used to read "upa_arrange leaves the
+    # organ where the card puts it", which was simply wrong: it applies the same
+    # GM_OCTAVE table, and the organ played an octave high in --arranger upa
+    # until 2026-10-24.
 
     with tempfile.TemporaryDirectory() as tmp:
         mid = os.path.join(tmp, 'card.mid')
