@@ -38,6 +38,7 @@ random-cards/
 midi/
 pcs30-midi/
 upa-midi/
+upa-genny/
 rmidi/
 *.mid
 !Sample Playcards/*.mid

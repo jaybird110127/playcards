@@ -161,6 +161,29 @@ This one needs the pattern tables, which are Yamaha's music and are not in this 
 python upa_arrange.py card.bin -o card.mid
 ```
 
+Both arrangers take `--all` to do a whole folder, with `--in-dir` and `--out-dir`; `upa_arrange.py` writes into `upa-midi/` and `pcs30_arrange.py` into `pcs30-midi/`.
+
+### As a .wav, with no synth at all
+
+A `.mid` needs something to play it, and what it sounds like is then down to whatever General MIDI synth you happen to have. **`upa_genny.py`** closes that gap: it hands the cartridge's arrangement to **genny** and gets audio back.
+
+```bash
+python upa_genny.py card.bin -o card.wav
+python upa_genny.py --all                       # a whole folder, into upa-genny/
+```
+
+genny is **not part of this project**. It is a CLI by **Oriol G&oacute;mez** that renders JSON specs of layered notes, drums and effects to a WAV, offline, with no external audio dependencies &mdash; written to be driven by an agent, which is exactly how it is used here. Get it from <https://github.com/ogomez92/genny> and install the command from your clone:
+
+```bash
+python install.py --tool
+```
+
+That uses [uv](https://docs.astral.sh/uv/) and installs `genny` on your PATH (editable, from the clone); `python install.py` on its own installs only its Claude Code skill, and `uv run genny ...` works from inside the clone without installing anything. It needs Python 3.10 or newer. Once `genny` is on PATH this tool finds it; without it you get an explanation rather than a traceback, and `--spec-only` still writes the JSON for you to render yourself.
+
+What comes out is the arrangement **as this project corrects it** &mdash; chords on the beat, fills in the rhythm's feel, the PCS-30's drum patterns &mdash; played by genny's own voices, which happen to carry nearly the whole Playcard vocabulary by name: organ, violin, trumpet, oboe, clarinet, harpsichord, piano, vibraphone, guitar, flute and brass. It is **not** the cartridge's FM sound; for that, render the firmware's own capture with `csrc/playcard` and `csrc/fmlog2wav`, which is a real YM2151 playing the real card.
+
+The balance between the parts took six rounds of listening, and [genny-render.md](genny-render.md) records what was measured to arrive at it, which numbers are measurements and which are one person's ears, and the traps worth knowing before touching any of it. The levels are not fixed in stone: `--gain NAME=VALUE` moves any part, `--duck DB` changes how far the obbligato drops under the melody, and `--voices fm` swaps every voice for genny's raw two-operator FM synth.
+
 ### Under openMSX &mdash; historical
 
 `play_card.py` and `card_to_midi.py` drive a real openMSX installation. **They came first, and everything in this project up to mid-2026 was measured through them.** Nothing needs them now. `csrc/playcard` runs the same cartridge about 150 times faster, at the right tempo, with no emulator installed; `msx_player.py` does the same in pure Python when something needs stepping; and `csrc/playcard --screen` reads the cartridge's own settings panel, which was the last thing openMSX was still required for.
@@ -293,6 +316,7 @@ or the tool.
 | file | what it is |
 |---|---|
 | [playcard-format.md](playcard-format.md) | The format itself, in full. Start here |
+| [genny-render.md](genny-render.md) | How a card is rendered to audio through genny: the method, the measurements behind every level, and the traps |
 | [HANDOFF.md](HANDOFF.md) | The state of the work: what is settled, what is still open, and which past conclusions turned out to be wrong |
 | [midi-roundtrip-design.md](midi-roundtrip-design.md) | How the decompile/compile cycle is designed and why |
 | [pcs30-sound.md](pcs30-sound.md) | How the PCS-30 keyboard makes its sound: chip, voices, filters, drums, tempo |
