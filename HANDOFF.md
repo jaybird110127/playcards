@@ -416,7 +416,8 @@ desynchronise`, which looks like a pass.
 | `pcs30_extract.py` | Reads a PCS-30 ROM once and writes `pcs30-tables.json`: the eight pattern tables at `0x2D26` and the five drum bit-planes at `0x2BBC`. Checks the shape of both before writing, so a wrong image is caught here rather than three tools later. `--check` reports on an existing file |
 | `upa_extract.py` | Reads a UPA-01 cartridge ROM once and writes `upa-tables.json`: the ten drum patterns at `0x523B`, the six drum fills at `0x5251` and the ten accompaniment patterns at `0x5261`, with each block's flags and ticks a step. Checks the whole structure first - the pointers, that the blocks tile their region exactly, and that every drum byte's low bits are the constant 2 - so a wrong image is caught here. `--check` reports on an existing file, `--show` prints the patterns as strikes and chord tones |
 | `upa_rhythm.py` | Those patterns over any chord: `--chord G7 --rhythm march`, `--alternate` for the other pattern of each rhythm, `--fills` for the six drum fills, `--raw` for the bytes. Reads `upa-tables.json`, not the ROM. This is where the owner's export voicing lives - the chord in the octave band ending at C5, the bass root C2 up to F#2 and then G1 up to B1 - so a MIDI exporter should import it rather than invent its own |
-| `upa_arrange.py` | A card as a five-part MIDI arrangement using the CARTRIDGE's accompaniment: melody, obbligato, bass, chord, drums on channel 10. `--all` does a folder. Needs `upa-tables.json`, and `pcs30-tables.json` too unless `--drums upa`. Shares `pcs30_arrange.py`'s card walk, held-note voice, MIDI writer and drum tables, and `upa_rhythm.py`'s voicing. Departures from the cartridge, all listed in its docstring: chords on the beat (it plays them a step late), bossa-nova's last chord onto the clave, the exported voicing, the next bass note forced to a new root, a fill's feel from the rhythm, chords ringing to the next beat, and the PCS-30's drum patterns by default. `--as-is` turns all of it off |
+| `upa_arrange.py` | A card as a five-part MIDI arrangement using the CARTRIDGE's accompaniment: melody, obbligato, bass, chord, drums on channel 10. `--all` does a folder. Needs `upa-tables.json`, and `pcs30-tables.json` too unless `--drums upa`. Shares `pcs30_arrange.py`'s card walk, held-note voice, MIDI writer and drum tables, and `upa_rhythm.py`'s voicing. Departures from the cartridge, all listed in its docstring: chords on the beat (it plays them a step late), bossa-nova's last chord onto the clave, the exported voicing, the next bass note forced to a new root, a fill's feel from the rhythm, chords ringing to the bar line, and the PCS-30's drum patterns by default. `--as-is` turns all of it off |
+| `upa_genny.py` | That arrangement as a **.wav**, with no General MIDI synth anywhere: it hands the parts to **genny**, a CLI by Oriol Gomez (<https://github.com/ogomez92/genny>, not part of this project and not shipped with it) which renders JSON note specs offline. `--all` does a folder into `upa-genny/`. Needs `genny` on PATH and what the arranger needs. `--gain NAME=VALUE` moves any part, `--duck DB` the obbligato's duck, `--voices fm` swaps every voice for genny's raw two-operator FM, `--spec-only` writes the JSON and stops. Every level in it was measured or listened into place: `genny-render.md` is the record |
 | `pcs30_tables.py` | Loads that file for everything else, and is where `pitch_byte` and `drum_mask` live. Run alone it says whether the tables are present and which ROM they came from |
 
 ## Corrupting a card on purpose
@@ -953,6 +954,29 @@ decoded (`0x2D12`/`0x2D1C` by rhythm, guitar a step down); the bass is always en
 is in `pcs30-sound.md`. The user's recordings are in `tmp/PCS-30 Recordings/` (not committed);
 renders go to `tmp/pcs30-synth/`. **Set aside on 2026-09-22** with those items open; all of them are
 balance, all by ear, so resuming means listening to a render beside a recording of the same card.
+
+**A card as audio through genny (2026-10-25, commit 6828bde).** `upa_genny.py` renders
+`upa_arrange.py`'s arrangement to a `.wav` by handing it to **genny**, a CLI by Oriol Gomez
+(<https://github.com/ogomez92/genny>; a local clone is at `s:\genny`, whose `AGENTS.md` is the
+reference for the spec format, and `genny list --json` is the authority on the catalog). It is not
+part of this project and none of it is shipped here; its repository carried no licence file, so its
+terms are its author's to state.
+
+It fits because an arrangement **is** a genny spec: measured across the corpus, no part ever overlaps
+itself and every group struck together shares one length, so each part becomes a sequential step list
+with nothing approximated, and the drums become one `pattern` layer a kit piece. Seventy seconds
+renders in five. genny's catalog carries nearly the whole Playcard voice vocabulary by name, which
+beats a GM program number through an unknown synth. It is **not** the cartridge's FM: two operators
+against the SFG-01's four, and `csrc/playcard` into `csrc/fmlog2wav` remains the genuine article.
+
+**Read `genny-render.md` before touching any level in it.** Six rounds of listening are behind them,
+and the measurements that made sense of what was heard are all there. The two findings worth carrying
+anywhere near genny: its **`vel` is a brightness control**, so the card's velocity duck moved the
+level by 0.4 to 1.4 dB and a harpsichord obbligato seemed not to duck at all (it is now a real 6 dB
+gain on its own layer, written at full velocity, because a ducked note that also darkens disappears);
+and **the melody is not what buries an obbligato** - in the bands a clarinet occupies it sits 18 dB
+above a trumpet melody, while the accompaniment *summed* sits over it, which is why the chord part is
+scaled by how often its pattern strikes.
 
 **A machine that never existed: the keyboard's sound with the cartridge's arrangement
 (2026-09-22).** `pcs30_synth.py --arranger upa` takes its notes from `upa_arrange.py` instead of
