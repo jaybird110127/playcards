@@ -93,12 +93,13 @@ turns the lot off and plays what the cartridge plays.
   exact; the others are not, so the figure changes with the feel.
 
 * **Notes hold, but not for ever.** A bass note runs until the next bass note.
-  A chord rings **to the next beat**, which is what stops the texture smearing,
-  and where the chart mutes the accompaniment it is held out to the bar line
-  instead - both as `pcs30_arrange.py` does it. A chord change stops whatever is
-  held rather than letting it ring under the new harmony; the cartridge instead
-  rewrites its multipliers, so one note changes pitch, which MIDI cannot do
-  without a new strike.
+  A chord rings **to the bar line**, or to the next chord if one comes first, as
+  `pcs30_arrange.py` does it - and where the chart mutes the accompaniment, to
+  that bar's line. Stopping a chord at the next **beat** instead was tried and
+  reverted: it cut notes off early enough to sound choppy. A chord change stops
+  whatever is held rather than letting it ring under the new harmony; the
+  cartridge instead rewrites its multipliers, so one note changes pitch, which
+  MIDI cannot do without a new strike.
 
 Whose drums
 -----------
@@ -214,8 +215,8 @@ class Chord(object):
             self.deadline = tick if self.deadline is None else min(self.deadline, tick)
 
     def hold(self, tick):
-        """Push a scheduled end later - an accompaniment mute does this, so a
-        chord caught by one rings to the bar line instead of to the next beat."""
+        """Push a scheduled end later.  An accompaniment mute in a later bar than
+        the strike does this, so the chord rings to that bar's line."""
         if self.notes and self.deadline is not None:
             self.deadline = max(self.deadline, tick)
 
@@ -326,9 +327,8 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
                 v.settle(tick)
             ch = A.chord_at(chords, tick)
             if ch is None:
-                # The chart's accompaniment mute.  The bass rings to the bar
-                # line, and a chord caught by the mute is held out to it too
-                # rather than stopping at the next beat.
+                # The chart's accompaniment mute.  Both parts ring to the bar
+                # line, which is where a chord would have stopped anyway.
                 bass_v.release(t0 + bar_ticks)
                 chord_v.hold(t0 + bar_ticks)
                 chord_v.release(t0 + bar_ticks)
@@ -379,8 +379,10 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
                     at += fix[k] * acc_ticks    # a correction, in steps
                     fixed += 1
                 chord_v.strike(at, U.chord_notes(root, quality))
-                # a chord rings to the next beat, unless a mute holds it longer
-                chord_v.release((at // 24 + 1) * 24)
+                # a chord rings to the BAR LINE, or to the next chord if one
+                # comes first.  Stopping it at the next beat instead was tried
+                # and cut notes off early enough to sound choppy.
+                chord_v.release(t0 + bar_ticks)
 
     for v in (bass_v, chord_v):
         v.settle(end)
@@ -511,7 +513,7 @@ def arrange(card, out=None, fill_feel='rhythm', vel=None, drop=(), quiet=False,
         print('  bass     : %4d notes, held to the next strike%s'
               % (len(bass), ', %d forced to the root by a chord change' % roots_forced
                  if roots_forced else ''))
-        print('  chord    : %4d notes, %s, each ringing to the next beat%s'
+        print('  chord    : %4d notes, %s, each ringing to the bar line%s'
               % (len(chord_out),
                  'a step late, as the cartridge plays it' if as_is else 'on the beat',
                  ', %d moved onto the bossa clave' % fixed if fixed else ''))

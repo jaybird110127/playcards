@@ -1198,10 +1198,11 @@ turns the lot off and plays what the cartridge plays.
   fills 1 and 3 are the same figure in the two feels, so that one is exact, while the other pairs
   are different figures and the figure changes with the feel.
 * **Notes hold, but not for ever.** A bass note runs to the next bass note. A chord rings **to the
-  next beat**, which keeps the texture from smearing, and a chord caught by the chart's
-  accompaniment mute is held out to the bar line instead. A chord change stops what is held - the
-  cartridge instead rewrites its multipliers, so one note changes pitch, which MIDI cannot do
-  without a new strike.
+  bar line**, or to the next chord if one comes first, which is how `pcs30_arrange.py` does it; a
+  chord caught by the chart's accompaniment mute rings to that bar's line. Stopping a chord at the
+  next **beat** was tried in between and **reverted on 2026-10-24**: it cut notes off early enough to
+  sound choppy. A chord change stops what is held - the cartridge instead rewrites its multipliers,
+  so one note changes pitch, which MIDI cannot do without a new strike.
 * **The drums are the PCS-30's by default.** Both machines have the same five drums, so the patterns
   mix, and `--drums` says how. `mixed`, the default, is what sounds best to the owner: the
   **PCS-30's patterns for the ten rhythms**, the **cartridge's own fills 1 to 4**, and the
